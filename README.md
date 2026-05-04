@@ -27,6 +27,16 @@ Configure via environment variables or `.env` file:
 | `OPENAI_MODEL` | `gpt-4o` | Model name |
 | `OPENAI_API_MODE` | `chat` | API mode: `chat` (Chat Completions) or `responses` (Responses API) |
 
+### Priority (highest → lowest)
+
+| Priority | Source | Example |
+|---|---|---|
+| 1 | MCP client `env` field | `"env": {"OPENAI_API_KEY": "..."}` in `mcpServers` config |
+| 2 | Shell environment variables | `export OPENAI_API_KEY=...` |
+| 3 | `.env` file | `OPENAI_API_KEY=...` in project root |
+
+In other words: if `OPENAI_API_KEY` is set in the MCP client config, it wins over everything. Otherwise the shell's env var wins, and finally `.env` is used as fallback.
+
 ## Tool
 
 ### `ocr_image`
