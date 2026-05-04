@@ -1,0 +1,20 @@
+[project]
+name = "openai-ocr-mcp"
+version = "0.1.0"
+description = "MCP server that uses OpenAI vision API to recognize and understand image content, designed as an OCR assistant for non-multimodal AI models."
+requires-python = ">=3.11"
+dependencies = [
+    "mcp>=1.0.0",
+    "openai>=1.0.0",
+    "httpx>=0.28.0",
+]
+
+[project.scripts]
+openai-ocr-mcp = "openai_ocr_mcp:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.uv]
+package = true
