@@ -7,6 +7,7 @@ Examples:
     uv run python scripts/test_ocr.py screenshot.png
     uv run python scripts/test_ocr.py https://example.com/photo.jpg "提取图中所有文字"
     uv run python scripts/test_ocr.py ~/Desktop/test.png --detail high
+    uv run python scripts/test_ocr.py ~/Desktop/test.png --api-mode responses
 """
 
 import argparse
@@ -22,7 +23,7 @@ if not os.environ.get("OPENAI_API_KEY"):
     from dotenv import load_dotenv
     load_dotenv()
 
-from openai_ocr_mcp.server import ocr_image
+from openai_ocr_mcp.server import ocr_image, MODEL
 
 
 def main() -> None:
@@ -32,21 +33,34 @@ def main() -> None:
                         help="Custom instruction for the vision model")
     parser.add_argument("--detail", choices=["auto", "low", "high"], default="auto",
                         help="Image detail level")
+    parser.add_argument(
+        "--api-mode",
+        choices=["chat", "responses"],
+        default=None,
+        help="API mode override",
+    )
+    parser.add_argument("--debug", action="store_true",
+                        help="Print raw API response for debugging")
     args = parser.parse_args()
 
     if not os.environ.get("OPENAI_API_KEY"):
         print("Error: OPENAI_API_KEY is not set and no .env file found.", file=sys.stderr)
         sys.exit(1)
 
+    api_mode = args.api_mode or os.environ.get("OPENAI_API_MODE", "chat")
     prompt = args.prompt or "Please read and describe all the text and visual content in this image in detail."
 
     print(f"Analyzing: {args.source}")
-    print(f"Model:     {os.environ.get('OPENAI_MODEL', 'gpt-4o')}")
+    print(f"Model:     {MODEL}")
+    print(f"Mode:      {api_mode}")
     print(f"Detail:    {args.detail}")
     print(f"Prompt:    {prompt}")
     print("-" * 60)
 
-    result = ocr_image(source=args.source, prompt=prompt, detail=args.detail)
+    if args.debug:
+        print("Debug: using streaming request")
+
+    result = ocr_image(source=args.source, prompt=prompt, detail=args.detail, api_mode=api_mode)
 
     print("\nResult:")
     print(result)

@@ -25,6 +25,7 @@ Configure via environment variables or `.env` file:
 | `OPENAI_API_KEY` | — | OpenAI API key (required) |
 | `OPENAI_BASE_URL` | `https://api.openai.com/v1` | API base URL (compatible with other OpenAI-like providers) |
 | `OPENAI_MODEL` | `gpt-4o` | Model name |
+| `OPENAI_API_MODE` | `chat` | API mode: `chat` (Chat Completions) or `responses` (Responses API) |
 
 ## Tool
 
@@ -39,6 +40,7 @@ Analyse an image and return its text/visual content.
 | `source` | `string` | — | Local file path or HTTP(S) URL of the image |
 | `prompt` | `string` | *(see below)* | Custom instruction for the vision model |
 | `detail` | `string` | `"auto"` | Image detail level: `auto`, `low`, or `high` |
+| `api_mode` | `string` | `null` | API mode override (`"chat"` or `"responses"`); falls back to `OPENAI_API_MODE` env var, then `"chat"` |
 
 Default prompt: `"Please read and describe all the text and visual content in this image in detail."`
 
@@ -80,6 +82,12 @@ uv run python scripts/test_ocr.py receipt.jpg "提取图中所有文字"
 
 # Control image detail level
 uv run python scripts/test_ocr.py diagram.png --detail high
+
+# Use Responses API
+uv run python scripts/test_ocr.py screenshot.png --api-mode responses
 ```
+
+The implementation uses streaming requests internally and returns the assembled
+final text.
 
 The script loads `.env` automatically if `OPENAI_API_KEY` is not already set.
