@@ -66,7 +66,6 @@ Generate image files from a text prompt using the OpenAI image generation API.
 |---|---|---|---|
 | `prompt` | `string` | - | Text prompt describing the image to generate |
 | `output_path` | `string` or `null` | `null` | Optional output file path or directory. If omitted, images are saved under `OPENAI_IMAGE_OUTPUT_DIR` |
-| `model` | `string` or `null` | `null` | Image model override; falls back to `OPENAI_IMAGE_MODEL`, then `gpt-image-2` |
 | `size` | `string` | `1024x1024` | Image size, such as `1024x1024`, `1024x1536`, or `1536x1024` |
 | `quality` | `string` | `auto` | Image quality, typically `auto`, `low`, `medium`, or `high` |
 | `output_format` | `string` | `png` | Output format, typically `png`, `jpeg`, or `webp` |
@@ -74,7 +73,7 @@ Generate image files from a text prompt using the OpenAI image generation API.
 | `background` | `string` or `null` | `null` | Optional background mode if supported by the image model |
 | `user` | `string` or `null` | `null` | Optional end-user identifier for API abuse monitoring |
 
-The tool returns JSON with the saved local file paths and any API-provided revised prompts or usage data.
+The image model is configured only through `OPENAI_IMAGE_MODEL`; it is not exposed as a tool parameter. The tool returns JSON with the saved local file paths and any API-provided revised prompts or usage data.
 
 ## Using with MCP Clients
 
