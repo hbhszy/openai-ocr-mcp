@@ -278,7 +278,6 @@ def ocr_image(
 def generate_image(
     prompt: str,
     output_path: str | None = None,
-    model: str | None = None,
     size: str = "1024x1024",
     quality: str = "auto",
     output_format: str = "png",
@@ -292,8 +291,6 @@ def generate_image(
         prompt: Text prompt describing the image to generate.
         output_path: Optional output file path or directory. If omitted, images
                      are saved under OPENAI_IMAGE_OUTPUT_DIR.
-        model: Image model override. Defaults to OPENAI_IMAGE_MODEL, then
-               "gpt-image-2".
         size: Image size, such as "1024x1024", "1024x1536", or "1536x1024".
         quality: Image quality, typically "auto", "low", "medium", or "high".
         output_format: Output format, typically "png", "jpeg", or "webp".
@@ -304,9 +301,8 @@ def generate_image(
     if n < 1:
         raise ValueError("n must be at least 1.")
 
-    selected_model = model or IMAGE_MODEL
     payload = {
-        "model": selected_model,
+        "model": IMAGE_MODEL,
         "prompt": prompt,
         "size": size,
         "quality": quality,
@@ -339,7 +335,6 @@ def generate_image(
 
     return json.dumps(
         {
-            "model": selected_model,
             "size": size,
             "quality": quality,
             "output_format": output_format,
