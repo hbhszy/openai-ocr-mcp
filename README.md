@@ -26,6 +26,8 @@ Configure via environment variables or `.env` file:
 | `OPENAI_BASE_URL` | `https://api.openai.com/v1` | API base URL (compatible with other OpenAI-like providers) |
 | `OPENAI_MODEL` | `gpt-4o` | Model name |
 | `OPENAI_API_MODE` | `chat` | API mode: `chat` (Chat Completions) or `responses` (Responses API) |
+| `OPENAI_IMAGE_MODEL` | `gpt-image-2` | Image generation model name |
+| `OPENAI_IMAGE_OUTPUT_DIR` | `generated_images` | Default directory for generated image files |
 
 ### Priority (highest → lowest)
 
@@ -37,7 +39,7 @@ Configure via environment variables or `.env` file:
 
 In other words: if `OPENAI_API_KEY` is set in the MCP client config, it wins over everything. Otherwise the shell's env var wins, and finally `.env` is used as fallback.
 
-## Tool
+## Tools
 
 ### `ocr_image`
 
@@ -54,6 +56,26 @@ Analyse an image and return its text/visual content.
 
 Default prompt: `"Please read and describe all the text and visual content in this image in detail."`
 
+### `generate_image`
+
+Generate image files from a text prompt using the OpenAI image generation API.
+
+**Parameters:**
+
+| Name | Type | Default | Description |
+|---|---|---|---|
+| `prompt` | `string` | - | Text prompt describing the image to generate |
+| `output_path` | `string` or `null` | `null` | Optional output file path or directory. If omitted, images are saved under `OPENAI_IMAGE_OUTPUT_DIR` |
+| `model` | `string` or `null` | `null` | Image model override; falls back to `OPENAI_IMAGE_MODEL`, then `gpt-image-2` |
+| `size` | `string` | `1024x1024` | Image size, such as `1024x1024`, `1024x1536`, or `1536x1024` |
+| `quality` | `string` | `auto` | Image quality, typically `auto`, `low`, `medium`, or `high` |
+| `output_format` | `string` | `png` | Output format, typically `png`, `jpeg`, or `webp` |
+| `n` | `integer` | `1` | Number of images to generate |
+| `background` | `string` or `null` | `null` | Optional background mode if supported by the image model |
+| `user` | `string` or `null` | `null` | Optional end-user identifier for API abuse monitoring |
+
+The tool returns JSON with the saved local file paths and any API-provided revised prompts or usage data.
+
 ## Using with MCP Clients
 
 ### Claude Desktop / Cline / etc.
@@ -67,7 +89,8 @@ Default prompt: `"Please read and describe all the text and visual content in th
       "env": {
         "OPENAI_API_KEY": "sk-xxx",
         "OPENAI_BASE_URL": "https://api.openai.com/v1",
-        "OPENAI_MODEL": "gpt-4o"
+        "OPENAI_MODEL": "gpt-4o",
+        "OPENAI_IMAGE_MODEL": "gpt-image-2"
       }
     }
   }
