@@ -26,8 +26,8 @@ Configure via environment variables or `.env` file:
 | `OPENAI_BASE_URL` | `https://api.openai.com/v1` | API base URL (compatible with other OpenAI-like providers) |
 | `OPENAI_MODEL` | `gpt-4o` | Model name |
 | `OPENAI_API_MODE` | `chat` | API mode: `chat` (Chat Completions) or `responses` (Responses API) |
-| `OPENAI_IMAGE_MODEL` | `gpt-image-2` | Image generation model name |
-| `OPENAI_IMAGE_OUTPUT_DIR` | `generated_images` | Default directory for generated image files |
+| `OPENAI_IMAGE_MODEL` | `gpt-image-2` | Image generation/editing model name |
+| `OPENAI_IMAGE_OUTPUT_DIR` | `generated_images` | Default directory for generated or edited image files |
 
 ### Priority (highest → lowest)
 
@@ -74,6 +74,30 @@ Generate image files from a text prompt using the OpenAI image generation API.
 | `user` | `string` or `null` | `null` | Optional end-user identifier for API abuse monitoring |
 
 The image model is configured only through `OPENAI_IMAGE_MODEL`; it is not exposed as a tool parameter. The tool returns JSON with the saved local file paths and any API-provided revised prompts or usage data.
+
+### `edit_image`
+
+Edit existing image files from a text prompt using the OpenAI image editing API.
+
+**Parameters:**
+
+| Name | Type | Default | Description |
+|---|---|---|---|
+| `source` | `string` or `array[string]` | - | Local file path, HTTP(S) URL, data URL, or list of image sources to edit |
+| `prompt` | `string` | - | Text prompt describing the desired edit |
+| `mask` | `string` or `null` | `null` | Optional local file path, HTTP(S) URL, or data URL for an edit mask |
+| `output_path` | `string` or `null` | `null` | Optional output file path or directory. If omitted, images are saved under `OPENAI_IMAGE_OUTPUT_DIR` |
+| `size` | `string` | `auto` | Output image size, such as `auto`, `1024x1024`, `1024x1536`, or `1536x1024` |
+| `quality` | `string` | `auto` | Output quality, typically `auto`, `low`, `medium`, or `high` |
+| `output_format` | `string` | `png` | Output format, typically `png`, `jpeg`, or `webp` |
+| `n` | `integer` | `1` | Number of edited images to generate |
+| `background` | `string` or `null` | `null` | Optional background mode, such as `auto`, `transparent`, or `opaque` |
+| `input_fidelity` | `string` or `null` | `null` | Optional input fidelity level, typically `high` or `low` |
+| `moderation` | `string` or `null` | `null` | Optional moderation level, typically `auto` or `low` |
+| `output_compression` | `integer` or `null` | `null` | Optional 0-100 compression level for `jpeg` or `webp` output |
+| `user` | `string` or `null` | `null` | Optional end-user identifier for API abuse monitoring |
+
+The image model is configured only through `OPENAI_IMAGE_MODEL`. For JSON edit requests this tool sends input images as `images` references; local files are converted to data URLs, while HTTP(S) URLs are passed through directly. The tool returns JSON with the saved local file paths and any API-provided revised prompts or usage data.
 
 ## Using with MCP Clients
 
