@@ -4,8 +4,10 @@
     "api_key": "sk-xxx",
     "request_timeout": 1200
   },
+  "disabled_tools": [],
   "tools": {
     "ocr_image": {
+      "enabled": true,
       "base_url": "",
       "api_key": "",
       "model": "",
@@ -13,12 +15,14 @@
       "request_timeout": 1200
     },
     "generate_image": {
+      "enabled": true,
       "base_url": "",
       "api_key": "",
       "model": "",
       "request_timeout": 1200
     },
     "edit_image": {
+      "enabled": true,
       "base_url": "",
       "api_key": "",
       "model": "",

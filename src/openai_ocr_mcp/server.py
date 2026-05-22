@@ -15,6 +15,7 @@ Environment variables:
     OPENAI_API_MODE  (optional)  API mode: "chat" or "responses".
                                  Defaults to "chat".
     OPENAI_OCR_MCP_CONFIG       (optional)  JSON config file path. Defaults to ./config.json if present.
+    OPENAI_OCR_MCP_DISABLED_TOOLS (optional) Comma-separated tool names to hide from MCP clients.
     OPENAI_<TOOL>_API_KEY       (optional)  Tool-specific API key.
     OPENAI_<TOOL>_BASE_URL      (optional)  Tool-specific API base URL.
     OPENAI_<TOOL>_MODEL         (optional)  Tool-specific model.
@@ -221,6 +222,38 @@ def _resolve_tool_config(
         model=model,
         request_timeout=request_timeout,
     )
+
+
+def _disabled_tools() -> set[str]:
+    """Return set of tool names that should be hidden from MCP clients."""
+    disabled: set[str] = set()
+
+    try:
+        config = _load_config_file()
+    except (FileNotFoundError, ValueError):
+        config = {}
+
+    for name in config.get("disabled_tools", []):
+        name = str(name).strip()
+        if name:
+            disabled.add(name)
+
+    tools = _mapping(config.get("tools"))
+    for tool_name, section in tools.items():
+        if isinstance(section, dict):
+            if section.get("enabled") is True:
+                disabled.discard(tool_name)
+            elif section.get("enabled") is False:
+                disabled.add(tool_name)
+
+    env_disabled = os.environ.get("OPENAI_OCR_MCP_DISABLED_TOOLS", "")
+    if env_disabled:
+        for name in env_disabled.split(","):
+            name = name.strip()
+            if name:
+                disabled.add(name)
+
+    return disabled
 
 
 def _resolve_ocr_config() -> ToolConfig:
@@ -821,6 +854,8 @@ def edit_image(
 # ── entry point ───────────────────────────────────────────────────────────
 
 def main() -> None:
+    for name in _disabled_tools():
+        mcp.remove_tool(name)
     mcp.run()
 
 

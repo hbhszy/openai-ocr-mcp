@@ -27,6 +27,7 @@ Configure via environment variables or `.env` file:
 | `OPENAI_MODEL` | `gpt-5.4` | Model name |
 | `OPENAI_API_MODE` | `chat` | API mode: `chat` (Chat Completions) or `responses` (Responses API) |
 | `OPENAI_OCR_MCP_CONFIG` | `./config.json` if present | Optional JSON config file path for structured defaults and per-tool overrides |
+| `OPENAI_OCR_MCP_DISABLED_TOOLS` | — | Comma-separated tool names to hide from MCP clients (e.g. `generate_image,edit_image`) |
 | `OPENAI_IMAGE_MODEL` | `gpt-image-2` | Image generation/editing model name |
 | `OPENAI_IMAGE_OUTPUT_DIR` | `generated_images` | Default directory for generated or edited image files |
 | `OPENAI_REQUEST_TIMEOUT` | `1200` | Request timeout in seconds for OCR and image APIs |
@@ -53,6 +54,7 @@ For larger setups, create `config.json` in the working directory, or set `OPENAI
     "api_key": "sk-xxx",
     "request_timeout": 1200
   },
+  "disabled_tools": [],
   "tools": {
     "ocr_image": {
       "base_url": "",
@@ -77,7 +79,7 @@ For larger setups, create `config.json` in the working directory, or set `OPENAI
 }
 ```
 
-Each tool can define `base_url`, `api_key`, `model`, and `request_timeout`. `ocr_image` can also define `api_mode`. Empty string values are ignored, so the tool falls back to environment variables, `defaults`, or the tool's built-in model default.
+Each tool can define `base_url`, `api_key`, `model`, `request_timeout`, and `enabled`. `ocr_image` can also define `api_mode`. Empty string values are ignored, so the tool falls back to environment variables, `defaults`, or the tool's built-in model default.
 
 If you prefer to keep secrets outside JSON, use `api_key_env` instead of `api_key`:
 
@@ -88,6 +90,40 @@ If you prefer to keep secrets outside JSON, use `api_key_env` instead of `api_ke
   }
 }
 ```
+
+### Disabling tools
+
+Tools can be hidden from MCP clients so they never appear in the tool list. This is useful when you only need a subset of the available tools.
+
+Three mechanisms are available (they can be combined):
+
+1. **Top-level `disabled_tools` list** in config file:
+
+```json
+{
+  "disabled_tools": ["generate_image", "edit_image"]
+}
+```
+
+2. **Per-tool `enabled: false`** in config file:
+
+```json
+{
+  "tools": {
+    "edit_image": {
+      "enabled": false
+    }
+  }
+}
+```
+
+3. **Environment variable** `OPENAI_OCR_MCP_DISABLED_TOOLS` (comma-separated):
+
+```bash
+OPENAI_OCR_MCP_DISABLED_TOOLS=generate_image,edit_image
+```
+
+All three sources are merged — a tool is hidden if it appears in any of them.
 
 Per-field resolution order:
 
