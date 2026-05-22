@@ -1,51 +1,51 @@
 # OpenAI OCR MCP
 
-MCP server that uses OpenAI vision API to recognize and understand image content. Designed for non-multimodal AI models that need assistance interpreting images.
+基于 OpenAI 视觉 API 的 MCP 服务器，用于识别和理解图片内容。专为需要图像理解能力的非多模态 AI 模型设计。
 
-## Quick Start
+## 快速开始
 
 ```bash
-# Install dependencies
+# 安装依赖
 uv sync
 
-# Configure
+# 配置
 cp .env.example .env
-# edit .env with your API key
+# 编辑 .env 填入 API Key
 
-# Run
+# 运行
 uv run openai-ocr-mcp
 ```
 
-## Configuration
+## 配置
 
-Configure via environment variables or `.env` file:
+通过环境变量或 `.env` 文件配置：
 
-| Variable | Default | Description |
+| 变量 | 默认值 | 说明 |
 |---|---|---|
-| `OPENAI_API_KEY` | — | OpenAI API key (required) |
-| `OPENAI_BASE_URL` | `https://api.openai.com/v1` | API base URL (compatible with other OpenAI-like providers) |
-| `OPENAI_MODEL` | `gpt-5.4` | Model name |
-| `OPENAI_API_MODE` | `chat` | API mode: `chat` (Chat Completions) or `responses` (Responses API) |
-| `OPENAI_OCR_MCP_CONFIG` | `./config.json` if present | Optional JSON config file path for structured defaults and per-tool overrides |
-| `OPENAI_OCR_MCP_DISABLED_TOOLS` | — | Comma-separated tool names to hide from MCP clients (e.g. `generate_image,edit_image`) |
-| `OPENAI_IMAGE_MODEL` | `gpt-image-2` | Image generation/editing model name |
-| `OPENAI_IMAGE_OUTPUT_DIR` | `generated_images` | Default directory for generated or edited image files |
-| `OPENAI_REQUEST_TIMEOUT` | `1200` | Request timeout in seconds for OCR and image APIs |
-| `OPENAI_IMAGE_REQUEST_TIMEOUT` | `1200` | Legacy image generation/editing request timeout override |
+| `OPENAI_API_KEY` | — | OpenAI API 密钥（必填） |
+| `OPENAI_BASE_URL` | `https://api.openai.com/v1` | API 基础地址（兼容其他 OpenAI 兼容服务商） |
+| `OPENAI_MODEL` | `gpt-5.4` | 模型名称 |
+| `OPENAI_API_MODE` | `chat` | API 模式：`chat`（Chat Completions）或 `responses`（Responses API） |
+| `OPENAI_OCR_MCP_CONFIG` | `./config.json`（如存在） | JSON 配置文件路径，用于结构化默认值和工具级覆盖 |
+| `OPENAI_OCR_MCP_DISABLED_TOOLS` | — | 逗号分隔的工具名称，对 MCP 客户端隐藏（如 `generate_image,edit_image`） |
+| `OPENAI_IMAGE_MODEL` | `gpt-image-2` | 图片生成/编辑模型名称 |
+| `OPENAI_IMAGE_OUTPUT_DIR` | `generated_images` | 生成图片的默认保存目录 |
+| `OPENAI_REQUEST_TIMEOUT` | `1200` | OCR 和图片 API 请求超时（秒） |
+| `OPENAI_IMAGE_REQUEST_TIMEOUT` | `1200` | 旧版图片生成/编辑请求超时覆盖 |
 
-Tool-specific environment variables are also supported:
+也支持工具级别的环境变量：
 
-| Tool | API key | Base URL | Model | Extra |
+| 工具 | API Key | Base URL | 模型 | 其他 |
 |---|---|---|---|---|
-| `ocr_image` | `OPENAI_OCR_API_KEY` | `OPENAI_OCR_BASE_URL` | `OPENAI_OCR_MODEL` | `OPENAI_OCR_API_MODE`, `OPENAI_OCR_REQUEST_TIMEOUT` |
+| `ocr_image` | `OPENAI_OCR_API_KEY` | `OPENAI_OCR_BASE_URL` | `OPENAI_OCR_MODEL` | `OPENAI_OCR_API_MODE`、`OPENAI_OCR_REQUEST_TIMEOUT` |
 | `generate_image` | `OPENAI_GENERATE_IMAGE_API_KEY` | `OPENAI_GENERATE_IMAGE_BASE_URL` | `OPENAI_GENERATE_IMAGE_MODEL` | `OPENAI_GENERATE_IMAGE_REQUEST_TIMEOUT` |
 | `edit_image` | `OPENAI_EDIT_IMAGE_API_KEY` | `OPENAI_EDIT_IMAGE_BASE_URL` | `OPENAI_EDIT_IMAGE_MODEL` | `OPENAI_EDIT_IMAGE_REQUEST_TIMEOUT` |
 
-`OPENAI_OCR_IMAGE_*` is also accepted as an alias for `OPENAI_OCR_*`.
+`OPENAI_OCR_IMAGE_*` 也可作为 `OPENAI_OCR_*` 的别名。
 
-### Structured config file
+### 结构化配置文件
 
-For larger setups, create `config.json` in the working directory, or set `OPENAI_OCR_MCP_CONFIG` to another JSON file. A complete example is included at `config.example.json`:
+对于更复杂的配置，可在工作目录创建 `config.json`，或通过 `OPENAI_OCR_MCP_CONFIG` 指定其他 JSON 文件。完整示例见 `config.example.json`：
 
 ```json
 {
@@ -79,9 +79,9 @@ For larger setups, create `config.json` in the working directory, or set `OPENAI
 }
 ```
 
-Each tool can define `base_url`, `api_key`, `model`, `request_timeout`, and `enabled`. `ocr_image` can also define `api_mode`. Empty string values are ignored, so the tool falls back to environment variables, `defaults`, or the tool's built-in model default.
+每个工具可定义 `base_url`、`api_key`、`model`、`request_timeout` 和 `enabled`。`ocr_image` 还可定义 `api_mode`。空字符串值会被忽略，工具会回退到环境变量、`defaults` 或内置默认值。
 
-If you prefer to keep secrets outside JSON, use `api_key_env` instead of `api_key`:
+如果希望密钥不存储在 JSON 中，可使用 `api_key_env` 代替 `api_key`：
 
 ```json
 {
@@ -91,13 +91,13 @@ If you prefer to keep secrets outside JSON, use `api_key_env` instead of `api_ke
 }
 ```
 
-### Disabling tools
+### 禁用工具
 
-Tools can be hidden from MCP clients so they never appear in the tool list. This is useful when you only need a subset of the available tools.
+可以对 MCP 客户端隐藏工具，使其不出现在工具列表中。当只需部分工具时非常有用。
 
-Three mechanisms are available (they can be combined):
+支持三种方式（可组合使用）：
 
-1. **Top-level `disabled_tools` list** in config file:
+1. **配置文件顶层 `disabled_tools` 列表**：
 
 ```json
 {
@@ -105,7 +105,7 @@ Three mechanisms are available (they can be combined):
 }
 ```
 
-2. **Per-tool `enabled: false`** in config file:
+2. **工具级别 `enabled: false`**：
 
 ```json
 {
@@ -117,100 +117,100 @@ Three mechanisms are available (they can be combined):
 }
 ```
 
-3. **Environment variable** `OPENAI_OCR_MCP_DISABLED_TOOLS` (comma-separated):
+3. **环境变量** `OPENAI_OCR_MCP_DISABLED_TOOLS`（逗号分隔）：
 
 ```bash
 OPENAI_OCR_MCP_DISABLED_TOOLS=generate_image,edit_image
 ```
 
-All three sources are merged — a tool is hidden if it appears in any of them.
+三种来源合并生效。工具级别的 `enabled: true` 可覆盖 `disabled_tools` 中的禁用；环境变量优先级最高，不可被配置文件覆盖。
 
-Per-field resolution order:
+各字段解析顺序：
 
-| Field | Priority |
+| 字段 | 优先级 |
 |---|---|
-| API key | Tool-specific env → tool config `api_key`/`api_key_env` → `OPENAI_API_KEY` → defaults config `api_key`/`api_key_env` |
-| Base URL | Tool-specific env → tool config → `OPENAI_BASE_URL` → defaults config → `https://api.openai.com/v1` |
-| OCR model | `OPENAI_OCR_MODEL` → tool config → `OPENAI_MODEL` → defaults config → `gpt-5.4` |
-| Image model | Tool-specific env → tool config → `OPENAI_IMAGE_MODEL` → `OPENAI_MODEL` → defaults config → `gpt-image-2` |
-| Request timeout | Tool-specific env → `OPENAI_REQUEST_TIMEOUT` → `OPENAI_IMAGE_REQUEST_TIMEOUT` for image tools → tool config `request_timeout` → defaults config `request_timeout` → `1200` |
-| OCR API mode | tool parameter → tool-specific env → tool config → `OPENAI_API_MODE` → defaults config → `chat` |
+| API Key | 工具级环境变量 → 工具配置 `api_key`/`api_key_env` → `OPENAI_API_KEY` → 默认配置 `api_key`/`api_key_env` |
+| Base URL | 工具级环境变量 → 工具配置 → `OPENAI_BASE_URL` → 默认配置 → `https://api.openai.com/v1` |
+| OCR 模型 | `OPENAI_OCR_MODEL` → 工具配置 → `OPENAI_MODEL` → 默认配置 → `gpt-5.4` |
+| 图片模型 | 工具级环境变量 → 工具配置 → `OPENAI_IMAGE_MODEL` → `OPENAI_MODEL` → 默认配置 → `gpt-image-2` |
+| 请求超时 | 工具级环境变量 → `OPENAI_REQUEST_TIMEOUT` → 图片工具的 `OPENAI_IMAGE_REQUEST_TIMEOUT` → 工具配置 `request_timeout` → 默认配置 `request_timeout` → `1200` |
+| OCR API 模式 | 工具参数 → 工具级环境变量 → 工具配置 → `OPENAI_API_MODE` → 默认配置 → `chat` |
 
-### Priority (highest → lowest)
+### 优先级（从高到低）
 
-| Priority | Source | Example |
+| 优先级 | 来源 | 示例 |
 |---|---|---|
-| 1 | MCP client `env` field | `"env": {"OPENAI_API_KEY": "..."}` in `mcpServers` config |
-| 2 | Shell environment variables | `export OPENAI_API_KEY=...` |
-| 3 | `.env` file | `OPENAI_API_KEY=...` in project root |
+| 1 | MCP 客户端 `env` 字段 | `mcpServers` 配置中的 `"env": {"OPENAI_API_KEY": "..."}` |
+| 2 | Shell 环境变量 | `export OPENAI_API_KEY=...` |
+| 3 | `.env` 文件 | 项目根目录中的 `OPENAI_API_KEY=...` |
 
-In other words: if an environment variable is set in the MCP client config, it wins over the shell and `.env` for that same variable. Structured config then applies according to the per-field rules above.
+即：MCP 客户端配置中的环境变量优先于 Shell 和 `.env` 中的同名变量。结构化配置按上述各字段规则生效。
 
-## Tools
+## 工具
 
 ### `ocr_image`
 
-Analyse an image and return its text/visual content.
+分析图片并返回文字/视觉内容。
 
-**Parameters:**
+**参数：**
 
-| Name | Type | Default | Description |
+| 名称 | 类型 | 默认值 | 说明 |
 |---|---|---|---|
-| `source` | `string` | — | Local file path or HTTP(S) URL of the image |
-| `prompt` | `string` | *(see below)* | Custom instruction for the vision model |
-| `detail` | `string` | `"auto"` | Image detail level: `auto`, `low`, or `high` |
-| `api_mode` | `string` | `null` | API mode override (`"chat"` or `"responses"`); falls back to `OPENAI_API_MODE` env var, then `"chat"` |
+| `source` | `string` | — | 图片的本地文件路径或 HTTP(S) URL |
+| `prompt` | `string` | *（见下方）* | 自定义视觉模型指令 |
+| `detail` | `string` | `"auto"` | 图片细节级别：`auto`、`low` 或 `high` |
+| `api_mode` | `string` | `null` | API 模式覆盖（`"chat"` 或 `"responses"`）；回退到 `OPENAI_API_MODE` 环境变量，然后默认 `"chat"` |
 
-The OCR request timeout defaults to 1200 seconds and can be configured with `OPENAI_OCR_REQUEST_TIMEOUT`, `OPENAI_REQUEST_TIMEOUT`, or `request_timeout` in the structured config file.
+OCR 请求超时默认 1200 秒，可通过 `OPENAI_OCR_REQUEST_TIMEOUT`、`OPENAI_REQUEST_TIMEOUT` 或配置文件中的 `request_timeout` 配置。
 
-Default prompt: `"Please read and describe all the text and visual content in this image in detail."`
+默认 prompt：`"Please read and describe all the text and visual content in this image in detail."`
 
 ### `generate_image`
 
-Generate image files from a text prompt using the OpenAI image generation API.
+使用 OpenAI 图片生成 API 从文本提示生成图片文件。
 
-**Parameters:**
+**参数：**
 
-| Name | Type | Default | Description |
+| 名称 | 类型 | 默认值 | 说明 |
 |---|---|---|---|
-| `prompt` | `string` | - | Text prompt describing the image to generate |
-| `output_path` | `string` or `null` | `null` | Optional output file path or directory. If omitted, images are saved under `OPENAI_IMAGE_OUTPUT_DIR` |
-| `size` | `string` | `1024x1024` | Image size, such as `1024x1024`, `1024x1536`, or `1536x1024` |
-| `quality` | `string` | `auto` | Image quality, typically `auto`, `low`, `medium`, or `high` |
-| `output_format` | `string` | `png` | Output format, typically `png`, `jpeg`, or `webp` |
-| `n` | `integer` | `1` | Number of images to generate |
-| `background` | `string` or `null` | `null` | Optional background mode if supported by the image model |
-| `user` | `string` or `null` | `null` | Optional end-user identifier for API abuse monitoring |
+| `prompt` | `string` | - | 描述要生成图片的文本提示 |
+| `output_path` | `string` 或 `null` | `null` | 可选的输出文件路径或目录。省略时保存到 `OPENAI_IMAGE_OUTPUT_DIR` |
+| `size` | `string` | `1024x1024` | 图片尺寸，如 `1024x1024`、`1024x1536` 或 `1536x1024` |
+| `quality` | `string` | `auto` | 图片质量，通常为 `auto`、`low`、`medium` 或 `high` |
+| `output_format` | `string` | `png` | 输出格式，通常为 `png`、`jpeg` 或 `webp` |
+| `n` | `integer` | `1` | 生成图片数量 |
+| `background` | `string` 或 `null` | `null` | 可选的背景模式（需模型支持） |
+| `user` | `string` 或 `null` | `null` | 可选的终端用户标识，用于 API 滥用监控 |
 
-The image model is configured through `OPENAI_GENERATE_IMAGE_MODEL`, the structured config file, or the legacy shared `OPENAI_IMAGE_MODEL`; it is not exposed as a tool parameter. The image request timeout defaults to 1200 seconds and can be configured with `OPENAI_GENERATE_IMAGE_REQUEST_TIMEOUT`, `OPENAI_IMAGE_REQUEST_TIMEOUT`, or `request_timeout` in the structured config file. The tool returns JSON with the saved local file paths and any API-provided revised prompts or usage data.
+图片模型通过 `OPENAI_GENERATE_IMAGE_MODEL`、结构化配置文件或旧版共享 `OPENAI_IMAGE_MODEL` 配置，不作为工具参数暴露。图片请求超时默认 1200 秒，可通过 `OPENAI_GENERATE_IMAGE_REQUEST_TIMEOUT`、`OPENAI_IMAGE_REQUEST_TIMEOUT` 或配置文件中的 `request_timeout` 配置。工具返回 JSON，包含保存的本地文件路径及 API 返回的修订提示词和使用量数据。
 
 ### `edit_image`
 
-Edit existing image files from a text prompt using the OpenAI image editing API.
+使用 OpenAI 图片编辑 API 从文本提示编辑现有图片。
 
-**Parameters:**
+**参数：**
 
-| Name | Type | Default | Description |
+| 名称 | 类型 | 默认值 | 说明 |
 |---|---|---|---|
-| `source` | `string` or `array[string]` | - | Local file path, HTTP(S) URL, data URL, or list of image sources to edit |
-| `prompt` | `string` | - | Text prompt describing the desired edit |
-| `mask` | `string` or `null` | `null` | Optional local file path, HTTP(S) URL, or data URL for an edit mask |
-| `output_path` | `string` or `null` | `null` | Optional output file path or directory. If omitted, images are saved under `OPENAI_IMAGE_OUTPUT_DIR` |
-| `size` | `string` | `auto` | Output image size, such as `auto`, `1024x1024`, `1024x1536`, or `1536x1024` |
-| `quality` | `string` | `auto` | Output quality, typically `auto`, `low`, `medium`, or `high` |
-| `output_format` | `string` | `png` | Output format, typically `png`, `jpeg`, or `webp` |
-| `n` | `integer` | `1` | Number of edited images to generate |
-| `background` | `string` or `null` | `null` | Optional background mode, such as `auto`, `transparent`, or `opaque` |
-| `input_fidelity` | `string` or `null` | `null` | Optional input fidelity level, typically `high` or `low` |
-| `moderation` | `string` or `null` | `null` | Optional moderation level, typically `auto` or `low` |
-| `output_compression` | `integer` or `null` | `null` | Optional 0-100 compression level for `jpeg` or `webp` output |
-| `user` | `string` or `null` | `null` | Optional end-user identifier for API abuse monitoring |
+| `source` | `string` 或 `array[string]` | - | 本地文件路径、HTTP(S) URL、data URL 或图片来源列表 |
+| `prompt` | `string` | - | 描述编辑内容的文本提示 |
+| `mask` | `string` 或 `null` | `null` | 可选的编辑遮罩，支持本地路径、HTTP(S) URL 或 data URL |
+| `output_path` | `string` 或 `null` | `null` | 可选的输出文件路径或目录。省略时保存到 `OPENAI_IMAGE_OUTPUT_DIR` |
+| `size` | `string` | `auto` | 输出图片尺寸，如 `auto`、`1024x1024`、`1024x1536` 或 `1536x1024` |
+| `quality` | `string` | `auto` | 输出质量，通常为 `auto`、`low`、`medium` 或 `high` |
+| `output_format` | `string` | `png` | 输出格式，通常为 `png`、`jpeg` 或 `webp` |
+| `n` | `integer` | `1` | 生成编辑图片数量 |
+| `background` | `string` 或 `null` | `null` | 可选的背景模式，如 `auto`、`transparent` 或 `opaque` |
+| `input_fidelity` | `string` 或 `null` | `null` | 可选的输入保真度，通常为 `high` 或 `low` |
+| `moderation` | `string` 或 `null` | `null` | 可选的审核级别，通常为 `auto` 或 `low` |
+| `output_compression` | `integer` 或 `null` | `null` | 可选的压缩级别（0-100），适用于 `jpeg` 或 `webp` 输出 |
+| `user` | `string` 或 `null` | `null` | 可选的终端用户标识，用于 API 滥用监控 |
 
-The image model is configured through `OPENAI_EDIT_IMAGE_MODEL`, the structured config file, or the legacy shared `OPENAI_IMAGE_MODEL`. The image request timeout defaults to 1200 seconds and can be configured with `OPENAI_EDIT_IMAGE_REQUEST_TIMEOUT`, `OPENAI_IMAGE_REQUEST_TIMEOUT`, or `request_timeout` in the structured config file. The tool returns JSON with the saved local file paths and any API-provided revised prompts or usage data.
+图片模型通过 `OPENAI_EDIT_IMAGE_MODEL`、结构化配置文件或旧版共享 `OPENAI_IMAGE_MODEL` 配置。图片请求超时默认 1200 秒，可通过 `OPENAI_EDIT_IMAGE_REQUEST_TIMEOUT`、`OPENAI_IMAGE_REQUEST_TIMEOUT` 或配置文件中的 `request_timeout` 配置。工具返回 JSON，包含保存的本地文件路径及 API 返回的修订提示词和使用量数据。
 
-## Using with MCP Clients
+## 在 MCP 客户端中使用
 
-### Claude Desktop / Cline / etc.
+### Claude Desktop / Cline 等
 
 ```json
 {
@@ -230,30 +230,29 @@ The image model is configured through `OPENAI_EDIT_IMAGE_MODEL`, the structured 
 }
 ```
 
-Replace `/path/to/openai-ocr-mcp` with the actual project path.
+将 `/path/to/openai-ocr-mcp` 替换为实际项目路径。
 
-## Testing
+## 测试
 
-A test script is provided to call the OCR function directly (bypasses MCP transport) for quick verification:
+提供了测试脚本可直接调用 OCR 功能（绕过 MCP 传输层）进行快速验证：
 
 ```bash
-# Analyze a local image
+# 分析本地图片
 OPENAI_API_KEY=sk-xxx uv run python scripts/test_ocr.py ~/Desktop/screenshot.png
 
-# Analyze a remote image
+# 分析远程图片
 uv run python scripts/test_ocr.py https://example.com/photo.jpg
 
-# Custom prompt (e.g. extract text in Chinese)
+# 自定义提示词（如提取中文文字）
 uv run python scripts/test_ocr.py receipt.jpg "提取图中所有文字"
 
-# Control image detail level
+# 控制图片细节级别
 uv run python scripts/test_ocr.py diagram.png --detail high
 
-# Use Responses API
+# 使用 Responses API
 uv run python scripts/test_ocr.py screenshot.png --api-mode responses
 ```
 
-The implementation uses streaming requests internally and returns the assembled
-final text.
+内部使用流式请求，返回拼接后的完整文本。
 
-The script loads `.env` automatically if `OPENAI_API_KEY` is not already set.
+如果 `OPENAI_API_KEY` 未设置，脚本会自动加载 `.env` 文件。
