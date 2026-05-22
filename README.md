@@ -29,14 +29,16 @@ Configure via environment variables or `.env` file:
 | `OPENAI_OCR_MCP_CONFIG` | `./config.json` if present | Optional JSON config file path for structured defaults and per-tool overrides |
 | `OPENAI_IMAGE_MODEL` | `gpt-image-2` | Image generation/editing model name |
 | `OPENAI_IMAGE_OUTPUT_DIR` | `generated_images` | Default directory for generated or edited image files |
+| `OPENAI_REQUEST_TIMEOUT` | `1200` | Request timeout in seconds for OCR and image APIs |
+| `OPENAI_IMAGE_REQUEST_TIMEOUT` | `1200` | Legacy image generation/editing request timeout override |
 
 Tool-specific environment variables are also supported:
 
 | Tool | API key | Base URL | Model | Extra |
 |---|---|---|---|---|
-| `ocr_image` | `OPENAI_OCR_API_KEY` | `OPENAI_OCR_BASE_URL` | `OPENAI_OCR_MODEL` | `OPENAI_OCR_API_MODE` |
-| `generate_image` | `OPENAI_GENERATE_IMAGE_API_KEY` | `OPENAI_GENERATE_IMAGE_BASE_URL` | `OPENAI_GENERATE_IMAGE_MODEL` | — |
-| `edit_image` | `OPENAI_EDIT_IMAGE_API_KEY` | `OPENAI_EDIT_IMAGE_BASE_URL` | `OPENAI_EDIT_IMAGE_MODEL` | — |
+| `ocr_image` | `OPENAI_OCR_API_KEY` | `OPENAI_OCR_BASE_URL` | `OPENAI_OCR_MODEL` | `OPENAI_OCR_API_MODE`, `OPENAI_OCR_REQUEST_TIMEOUT` |
+| `generate_image` | `OPENAI_GENERATE_IMAGE_API_KEY` | `OPENAI_GENERATE_IMAGE_BASE_URL` | `OPENAI_GENERATE_IMAGE_MODEL` | `OPENAI_GENERATE_IMAGE_REQUEST_TIMEOUT` |
+| `edit_image` | `OPENAI_EDIT_IMAGE_API_KEY` | `OPENAI_EDIT_IMAGE_BASE_URL` | `OPENAI_EDIT_IMAGE_MODEL` | `OPENAI_EDIT_IMAGE_REQUEST_TIMEOUT` |
 
 `OPENAI_OCR_IMAGE_*` is also accepted as an alias for `OPENAI_OCR_*`.
 
@@ -48,30 +50,34 @@ For larger setups, create `config.json` in the working directory, or set `OPENAI
 {
   "defaults": {
     "base_url": "https://api.openai.com/v1",
-    "api_key": "sk-xxx"
+    "api_key": "sk-xxx",
+    "request_timeout": 1200
   },
   "tools": {
     "ocr_image": {
       "base_url": "",
       "api_key": "",
       "model": "",
-      "api_mode": "chat"
+      "api_mode": "chat",
+      "request_timeout": 1200
     },
     "generate_image": {
       "base_url": "",
       "api_key": "",
-      "model": ""
+      "model": "",
+      "request_timeout": 1200
     },
     "edit_image": {
       "base_url": "",
       "api_key": "",
-      "model": ""
+      "model": "",
+      "request_timeout": 1200
     }
   }
 }
 ```
 
-Each tool can define `base_url`, `api_key`, and `model`. `ocr_image` can also define `api_mode`. Empty string values are ignored, so the tool falls back to environment variables, `defaults`, or the tool's built-in model default.
+Each tool can define `base_url`, `api_key`, `model`, and `request_timeout`. `ocr_image` can also define `api_mode`. Empty string values are ignored, so the tool falls back to environment variables, `defaults`, or the tool's built-in model default.
 
 If you prefer to keep secrets outside JSON, use `api_key_env` instead of `api_key`:
 
@@ -91,6 +97,7 @@ Per-field resolution order:
 | Base URL | Tool-specific env → tool config → `OPENAI_BASE_URL` → defaults config → `https://api.openai.com/v1` |
 | OCR model | `OPENAI_OCR_MODEL` → tool config → `OPENAI_MODEL` → defaults config → `gpt-5.4` |
 | Image model | Tool-specific env → tool config → `OPENAI_IMAGE_MODEL` → `OPENAI_MODEL` → defaults config → `gpt-image-2` |
+| Request timeout | Tool-specific env → `OPENAI_REQUEST_TIMEOUT` → `OPENAI_IMAGE_REQUEST_TIMEOUT` for image tools → tool config `request_timeout` → defaults config `request_timeout` → `1200` |
 | OCR API mode | tool parameter → tool-specific env → tool config → `OPENAI_API_MODE` → defaults config → `chat` |
 
 ### Priority (highest → lowest)
@@ -118,6 +125,8 @@ Analyse an image and return its text/visual content.
 | `detail` | `string` | `"auto"` | Image detail level: `auto`, `low`, or `high` |
 | `api_mode` | `string` | `null` | API mode override (`"chat"` or `"responses"`); falls back to `OPENAI_API_MODE` env var, then `"chat"` |
 
+The OCR request timeout defaults to 1200 seconds and can be configured with `OPENAI_OCR_REQUEST_TIMEOUT`, `OPENAI_REQUEST_TIMEOUT`, or `request_timeout` in the structured config file.
+
 Default prompt: `"Please read and describe all the text and visual content in this image in detail."`
 
 ### `generate_image`
@@ -137,7 +146,7 @@ Generate image files from a text prompt using the OpenAI image generation API.
 | `background` | `string` or `null` | `null` | Optional background mode if supported by the image model |
 | `user` | `string` or `null` | `null` | Optional end-user identifier for API abuse monitoring |
 
-The image model is configured through `OPENAI_GENERATE_IMAGE_MODEL`, the structured config file, or the legacy shared `OPENAI_IMAGE_MODEL`; it is not exposed as a tool parameter. The tool returns JSON with the saved local file paths and any API-provided revised prompts or usage data.
+The image model is configured through `OPENAI_GENERATE_IMAGE_MODEL`, the structured config file, or the legacy shared `OPENAI_IMAGE_MODEL`; it is not exposed as a tool parameter. The image request timeout defaults to 1200 seconds and can be configured with `OPENAI_GENERATE_IMAGE_REQUEST_TIMEOUT`, `OPENAI_IMAGE_REQUEST_TIMEOUT`, or `request_timeout` in the structured config file. The tool returns JSON with the saved local file paths and any API-provided revised prompts or usage data.
 
 ### `edit_image`
 
@@ -161,7 +170,7 @@ Edit existing image files from a text prompt using the OpenAI image editing API.
 | `output_compression` | `integer` or `null` | `null` | Optional 0-100 compression level for `jpeg` or `webp` output |
 | `user` | `string` or `null` | `null` | Optional end-user identifier for API abuse monitoring |
 
-The image model is configured through `OPENAI_EDIT_IMAGE_MODEL`, the structured config file, or the legacy shared `OPENAI_IMAGE_MODEL`. The tool returns JSON with the saved local file paths and any API-provided revised prompts or usage data.
+The image model is configured through `OPENAI_EDIT_IMAGE_MODEL`, the structured config file, or the legacy shared `OPENAI_IMAGE_MODEL`. The image request timeout defaults to 1200 seconds and can be configured with `OPENAI_EDIT_IMAGE_REQUEST_TIMEOUT`, `OPENAI_IMAGE_REQUEST_TIMEOUT`, or `request_timeout` in the structured config file. The tool returns JSON with the saved local file paths and any API-provided revised prompts or usage data.
 
 ## Using with MCP Clients
 

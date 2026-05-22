@@ -45,6 +45,7 @@ load_dotenv()
 DEFAULT_BASE_URL = "https://api.openai.com/v1"
 DEFAULT_OCR_MODEL = "gpt-5.4"
 DEFAULT_IMAGE_MODEL = "gpt-image-2"
+DEFAULT_REQUEST_TIMEOUT = 1200.0
 
 BASE_URL = os.environ.get("OPENAI_BASE_URL", DEFAULT_BASE_URL)
 API_KEY = os.environ.get("OPENAI_API_KEY", "")
@@ -52,6 +53,9 @@ MODEL = os.environ.get("OPENAI_MODEL", DEFAULT_OCR_MODEL)
 API_MODE = os.environ.get("OPENAI_API_MODE", "chat")
 IMAGE_MODEL = os.environ.get("OPENAI_IMAGE_MODEL", DEFAULT_IMAGE_MODEL)
 IMAGE_OUTPUT_DIR = os.environ.get("OPENAI_IMAGE_OUTPUT_DIR", "generated_images")
+REQUEST_TIMEOUT = float(
+    os.environ.get("OPENAI_REQUEST_TIMEOUT", str(DEFAULT_REQUEST_TIMEOUT))
+)
 
 mcp = FastMCP("openai-ocr-mcp")
 
@@ -61,6 +65,7 @@ class ToolConfig:
     base_url: str
     api_key: str
     model: str
+    request_timeout: float = DEFAULT_REQUEST_TIMEOUT
 
 
 @lru_cache(maxsize=1)
@@ -119,6 +124,40 @@ def _secret_from_config(section: dict) -> str | None:
     return None
 
 
+def _request_timeout_from_config(
+    defaults: dict,
+    tool_config: dict,
+    env_prefixes: tuple[str, ...],
+    legacy_envs: tuple[str, ...] = (),
+) -> float:
+    value = (
+        _env_value(*(f"{prefix}_REQUEST_TIMEOUT" for prefix in env_prefixes))
+        or _env_value(*legacy_envs)
+        or os.environ.get("OPENAI_REQUEST_TIMEOUT")
+        or os.environ.get("OPENAI_IMAGE_REQUEST_TIMEOUT")
+        or _config_value(tool_config, "request_timeout", "requestTimeout", "timeout")
+        or _config_value(
+            defaults,
+            "request_timeout",
+            "requestTimeout",
+            "timeout",
+            "image_request_timeout",
+            "imageRequestTimeout",
+        )
+    )
+    if not value:
+        return DEFAULT_REQUEST_TIMEOUT
+
+    try:
+        timeout = float(value)
+    except ValueError as exc:
+        raise ValueError(f"Invalid image request timeout: {value}") from exc
+
+    if timeout <= 0:
+        raise ValueError("Image request timeout must be greater than 0.")
+    return timeout
+
+
 def _tool_config_section(config: dict, *tool_names: str) -> dict:
     tools = _mapping(config.get("tools"))
     for tool_name in tool_names:
@@ -134,6 +173,7 @@ def _resolve_tool_config(
     env_prefixes: tuple[str, ...],
     default_model: str,
     legacy_model_envs: tuple[str, ...] = (),
+    legacy_timeout_envs: tuple[str, ...] = (),
 ) -> ToolConfig:
     config = _load_config_file()
     defaults = _mapping(config.get("defaults"))
@@ -161,6 +201,12 @@ def _resolve_tool_config(
         or _config_value(defaults, "model")
         or default_model
     )
+    request_timeout = _request_timeout_from_config(
+        defaults,
+        tool_config,
+        env_prefixes,
+        legacy_timeout_envs,
+    )
 
     if not api_key:
         names = ", ".join(f"{prefix}_API_KEY" for prefix in env_prefixes)
@@ -169,7 +215,12 @@ def _resolve_tool_config(
             "or an api_key/api_key_env value in OPENAI_OCR_MCP_CONFIG."
         )
 
-    return ToolConfig(base_url=base_url, api_key=api_key, model=model)
+    return ToolConfig(
+        base_url=base_url,
+        api_key=api_key,
+        model=model,
+        request_timeout=request_timeout,
+    )
 
 
 def _resolve_ocr_config() -> ToolConfig:
@@ -186,6 +237,7 @@ def _resolve_generate_image_config() -> ToolConfig:
         env_prefixes=("OPENAI_GENERATE_IMAGE",),
         default_model=DEFAULT_IMAGE_MODEL,
         legacy_model_envs=("OPENAI_IMAGE_MODEL",),
+        legacy_timeout_envs=("OPENAI_IMAGE_REQUEST_TIMEOUT",),
     )
 
 
@@ -195,6 +247,7 @@ def _resolve_edit_image_config() -> ToolConfig:
         env_prefixes=("OPENAI_EDIT_IMAGE",),
         default_model=DEFAULT_IMAGE_MODEL,
         legacy_model_envs=("OPENAI_IMAGE_MODEL",),
+        legacy_timeout_envs=("OPENAI_IMAGE_REQUEST_TIMEOUT",),
     )
 
 
@@ -238,13 +291,13 @@ def _extension_for_media_type(media_type: str) -> str:
     }.get(media_type, "png")
 
 
-def _load_image(source: str) -> tuple[str, str]:
+def _load_image(source: str, timeout: float = DEFAULT_REQUEST_TIMEOUT) -> tuple[str, str]:
     """Load image from a file path or URL.
 
     Returns a tuple of (media_type, base64_data).
     """
     if source.startswith(("http://", "https://")):
-        resp = httpx.get(source, timeout=30, follow_redirects=True)
+        resp = httpx.get(source, timeout=timeout, follow_redirects=True)
         resp.raise_for_status()
         media_type = resp.headers.get("content-type", "image/png")
         raw = resp.content
@@ -258,15 +311,15 @@ def _load_image(source: str) -> tuple[str, str]:
     return media_type, base64.b64encode(raw).decode("utf-8")
 
 
-def _image_data_url(source: str) -> str:
-    media_type, b64_data = _load_image(source)
+def _image_data_url(source: str, timeout: float = DEFAULT_REQUEST_TIMEOUT) -> str:
+    media_type, b64_data = _load_image(source, timeout=timeout)
     return f"data:{media_type};base64,{b64_data}"
 
 
-def _image_reference(source: str) -> dict:
+def _image_reference(source: str, timeout: float = DEFAULT_REQUEST_TIMEOUT) -> dict:
     if source.startswith(("http://", "https://", "data:")):
         return {"image_url": source}
-    return {"image_url": _image_data_url(source)}
+    return {"image_url": _image_data_url(source, timeout=timeout)}
 
 
 def _normalize_image_sources(source: str | list[str]) -> list[str]:
@@ -361,7 +414,10 @@ def _decode_image_item(item: dict) -> bytes:
 
 
 @contextmanager
-def _open_images_for_edit(sources: list[str]):
+def _open_images_for_edit(
+    sources: list[str],
+    timeout: float = DEFAULT_REQUEST_TIMEOUT,
+):
     """Open local paths as files and remote/data sources as in-memory files."""
     with ExitStack() as stack:
         files = []
@@ -373,7 +429,7 @@ def _open_images_for_edit(sources: list[str]):
                 files.append(stack.enter_context(path.open("rb")))
                 continue
 
-            media_type, b64_data = _load_image(source)
+            media_type, b64_data = _load_image(source, timeout=timeout)
             buffer = BytesIO(base64.b64decode(b64_data))
             buffer.name = f"image-{index}.{_extension_for_media_type(media_type)}"
             files.append(buffer)
@@ -382,7 +438,7 @@ def _open_images_for_edit(sources: list[str]):
 
 
 @contextmanager
-def _open_mask_for_edit(mask: str | None):
+def _open_mask_for_edit(mask: str | None, timeout: float = DEFAULT_REQUEST_TIMEOUT):
     if not mask:
         yield None
         return
@@ -395,7 +451,7 @@ def _open_mask_for_edit(mask: str | None):
             yield handle
         return
 
-    media_type, b64_data = _load_image(mask)
+    media_type, b64_data = _load_image(mask, timeout=timeout)
     buffer = BytesIO(base64.b64decode(b64_data))
     buffer.name = f"mask.{_extension_for_media_type(media_type)}"
     yield buffer
@@ -415,7 +471,13 @@ def _stream_text(config: ToolConfig, path: str, payload: dict, stream_type: str)
     url = f"{config.base_url.rstrip('/')}/{path.lstrip('/')}"
     parts: list[str] = []
 
-    with httpx.stream("POST", url, headers=headers, json=payload, timeout=90) as response:
+    with httpx.stream(
+        "POST",
+        url,
+        headers=headers,
+        json=payload,
+        timeout=config.request_timeout,
+    ) as response:
         if response.status_code >= 400:
             body = response.read().decode("utf-8", errors="replace")
             raise RuntimeError(f"API error {response.status_code}: {body}")
@@ -504,7 +566,7 @@ def _call_image_generation(config: ToolConfig, payload: dict) -> dict:
     }
     url = f"{config.base_url.rstrip('/')}/images/generations"
 
-    with httpx.Client(timeout=180) as http_client:
+    with httpx.Client(timeout=config.request_timeout) as http_client:
         response = http_client.post(url, headers=headers, json=payload)
 
     if response.status_code >= 400:
@@ -521,7 +583,7 @@ def _call_image_edit(config: ToolConfig, payload: dict) -> dict:
     }
     url = f"{config.base_url.rstrip('/')}/images/edits"
 
-    with httpx.Client(timeout=180) as http_client:
+    with httpx.Client(timeout=config.request_timeout) as http_client:
         response = http_client.post(url, headers=headers, json=payload)
 
     if response.status_code >= 400:
@@ -560,7 +622,7 @@ def ocr_image(
     if caller is None:
         raise ValueError(f"Unsupported API mode: {mode}")
 
-    media_type, b64_data = _load_image(source)
+    media_type, b64_data = _load_image(source, timeout=config.request_timeout)
     data_url = f"data:{media_type};base64,{b64_data}"
     return caller(config, prompt, data_url, detail)
 
@@ -707,11 +769,21 @@ def edit_image(
         request["user"] = user
 
     sources = _normalize_image_sources(source)
-    with _open_images_for_edit(sources) as image_files, _open_mask_for_edit(mask) as mask_file:
+    with _open_images_for_edit(
+        sources,
+        timeout=config.request_timeout,
+    ) as image_files, _open_mask_for_edit(
+        mask,
+        timeout=config.request_timeout,
+    ) as mask_file:
         request["image"] = image_files if len(image_files) > 1 else image_files[0]
         if mask_file is not None:
             request["mask"] = mask_file
-        client = OpenAI(base_url=config.base_url, api_key=config.api_key)
+        client = OpenAI(
+            base_url=config.base_url,
+            api_key=config.api_key,
+            timeout=config.request_timeout,
+        )
         result = client.images.edit(**request)
 
     items = _result_get(result, "data") or []
