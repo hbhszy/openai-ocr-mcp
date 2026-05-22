@@ -1,0 +1,24 @@
+{
+  "defaults": {
+    "base_url": "https://api.openai.com/v1",
+    "api_key": "sk-xxx"
+  },
+  "tools": {
+    "ocr_image": {
+      "base_url": "",
+      "api_key": "",
+      "model": "",
+      "api_mode": "chat"
+    },
+    "generate_image": {
+      "base_url": "",
+      "api_key": "",
+      "model": ""
+    },
+    "edit_image": {
+      "base_url": "",
+      "api_key": "",
+      "model": ""
+    }
+  }
+}

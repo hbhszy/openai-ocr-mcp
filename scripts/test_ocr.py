@@ -23,7 +23,7 @@ if not os.environ.get("OPENAI_API_KEY"):
     from dotenv import load_dotenv
     load_dotenv()
 
-from openai_ocr_mcp.server import ocr_image, MODEL
+from openai_ocr_mcp.server import ocr_image, _resolve_ocr_api_mode, _resolve_ocr_config
 
 
 def main() -> None:
@@ -43,15 +43,17 @@ def main() -> None:
                         help="Print raw API response for debugging")
     args = parser.parse_args()
 
-    if not os.environ.get("OPENAI_API_KEY"):
-        print("Error: OPENAI_API_KEY is not set and no .env file found.", file=sys.stderr)
+    api_mode = _resolve_ocr_api_mode(args.api_mode)
+    try:
+        config = _resolve_ocr_config()
+    except RuntimeError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
         sys.exit(1)
-
-    api_mode = args.api_mode or os.environ.get("OPENAI_API_MODE", "chat")
     prompt = args.prompt or "Please read and describe all the text and visual content in this image in detail."
 
     print(f"Analyzing: {args.source}")
-    print(f"Model:     {MODEL}")
+    print(f"Model:     {config.model}")
+    print(f"Base URL:  {config.base_url}")
     print(f"Mode:      {api_mode}")
     print(f"Detail:    {args.detail}")
     print(f"Prompt:    {prompt}")

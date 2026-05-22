@@ -11,20 +11,25 @@ Supports two API modes:
 Environment variables:
     OPENAI_API_KEY   (required)  OpenAI API key or compatible provider key.
     OPENAI_BASE_URL  (optional)  API base URL. Defaults to https://api.openai.com/v1.
-    OPENAI_MODEL     (optional)  Model name. Defaults to gpt-4o.
+    OPENAI_MODEL     (optional)  Model name. Defaults to gpt-5.4.
     OPENAI_API_MODE  (optional)  API mode: "chat" or "responses".
                                  Defaults to "chat".
+    OPENAI_OCR_MCP_CONFIG       (optional)  JSON config file path. Defaults to ./config.json if present.
+    OPENAI_<TOOL>_API_KEY       (optional)  Tool-specific API key.
+    OPENAI_<TOOL>_BASE_URL      (optional)  Tool-specific API base URL.
+    OPENAI_<TOOL>_MODEL         (optional)  Tool-specific model.
     OPENAI_IMAGE_MODEL       (optional)  Image generation model. Defaults to gpt-image-2.
     OPENAI_IMAGE_OUTPUT_DIR  (optional)  Directory for generated images. Defaults to generated_images.
 """
 
 import base64
 from contextlib import ExitStack, contextmanager
+from dataclasses import dataclass
 from datetime import datetime
+from functools import lru_cache
 from io import BytesIO
 import json
 import os
-import sys
 from pathlib import Path
 from uuid import uuid4
 
@@ -37,19 +42,174 @@ load_dotenv()
 
 # ── configuration ──────────────────────────────────────────────────────────
 
-BASE_URL = os.environ.get("OPENAI_BASE_URL", "https://api.openai.com/v1")
+DEFAULT_BASE_URL = "https://api.openai.com/v1"
+DEFAULT_OCR_MODEL = "gpt-5.4"
+DEFAULT_IMAGE_MODEL = "gpt-image-2"
+
+BASE_URL = os.environ.get("OPENAI_BASE_URL", DEFAULT_BASE_URL)
 API_KEY = os.environ.get("OPENAI_API_KEY", "")
-MODEL = os.environ.get("OPENAI_MODEL", "gpt-4o")
+MODEL = os.environ.get("OPENAI_MODEL", DEFAULT_OCR_MODEL)
 API_MODE = os.environ.get("OPENAI_API_MODE", "chat")
-IMAGE_MODEL = os.environ.get("OPENAI_IMAGE_MODEL", "gpt-image-2")
+IMAGE_MODEL = os.environ.get("OPENAI_IMAGE_MODEL", DEFAULT_IMAGE_MODEL)
 IMAGE_OUTPUT_DIR = os.environ.get("OPENAI_IMAGE_OUTPUT_DIR", "generated_images")
 
-if not API_KEY:
-    print("FATAL: OPENAI_API_KEY environment variable is not set.", file=sys.stderr)
-    sys.exit(1)
-
-client = OpenAI(base_url=BASE_URL, api_key=API_KEY)
 mcp = FastMCP("openai-ocr-mcp")
+
+
+@dataclass(frozen=True)
+class ToolConfig:
+    base_url: str
+    api_key: str
+    model: str
+
+
+@lru_cache(maxsize=1)
+def _load_config_file() -> dict:
+    config_path = os.environ.get("OPENAI_OCR_MCP_CONFIG")
+    if not config_path:
+        default_path = Path.cwd() / "config.json"
+        if not default_path.exists():
+            return {}
+        path = default_path
+    else:
+        path = Path(config_path).expanduser()
+        if not path.is_absolute():
+            path = Path.cwd() / path
+
+    if not path.exists():
+        raise FileNotFoundError(f"Config file not found: {path}")
+
+    with path.open("r", encoding="utf-8") as handle:
+        data = json.load(handle)
+
+    if not isinstance(data, dict):
+        raise ValueError("OPENAI_OCR_MCP_CONFIG must point to a JSON object.")
+    return data
+
+
+def _mapping(value: object) -> dict:
+    return value if isinstance(value, dict) else {}
+
+
+def _config_value(section: dict, *names: str) -> str | None:
+    for name in names:
+        value = section.get(name)
+        if value is not None and str(value) != "":
+            return str(value)
+    return None
+
+
+def _env_value(*names: str) -> str | None:
+    for name in names:
+        value = os.environ.get(name)
+        if value:
+            return value
+    return None
+
+
+def _secret_from_config(section: dict) -> str | None:
+    api_key = _config_value(section, "api_key", "apiKey")
+    if api_key:
+        return api_key
+
+    api_key_env = _config_value(section, "api_key_env", "apiKeyEnv")
+    if api_key_env:
+        return os.environ.get(api_key_env)
+
+    return None
+
+
+def _tool_config_section(config: dict, *tool_names: str) -> dict:
+    tools = _mapping(config.get("tools"))
+    for tool_name in tool_names:
+        section = tools.get(tool_name)
+        if isinstance(section, dict):
+            return section
+    return {}
+
+
+def _resolve_tool_config(
+    *,
+    tool_names: tuple[str, ...],
+    env_prefixes: tuple[str, ...],
+    default_model: str,
+    legacy_model_envs: tuple[str, ...] = (),
+) -> ToolConfig:
+    config = _load_config_file()
+    defaults = _mapping(config.get("defaults"))
+    tool_config = _tool_config_section(config, *tool_names)
+
+    base_url = (
+        _env_value(*(f"{prefix}_BASE_URL" for prefix in env_prefixes))
+        or _config_value(tool_config, "base_url", "baseUrl")
+        or os.environ.get("OPENAI_BASE_URL")
+        or _config_value(defaults, "base_url", "baseUrl")
+        or DEFAULT_BASE_URL
+    )
+    api_key = (
+        _env_value(*(f"{prefix}_API_KEY" for prefix in env_prefixes))
+        or _secret_from_config(tool_config)
+        or os.environ.get("OPENAI_API_KEY")
+        or _secret_from_config(defaults)
+        or ""
+    )
+    model = (
+        _env_value(*(f"{prefix}_MODEL" for prefix in env_prefixes))
+        or _config_value(tool_config, "model")
+        or _env_value(*legacy_model_envs)
+        or os.environ.get("OPENAI_MODEL")
+        or _config_value(defaults, "model")
+        or default_model
+    )
+
+    if not api_key:
+        names = ", ".join(f"{prefix}_API_KEY" for prefix in env_prefixes)
+        raise RuntimeError(
+            f"API key is not configured. Set {names}, OPENAI_API_KEY, "
+            "or an api_key/api_key_env value in OPENAI_OCR_MCP_CONFIG."
+        )
+
+    return ToolConfig(base_url=base_url, api_key=api_key, model=model)
+
+
+def _resolve_ocr_config() -> ToolConfig:
+    return _resolve_tool_config(
+        tool_names=("ocr_image", "ocr"),
+        env_prefixes=("OPENAI_OCR", "OPENAI_OCR_IMAGE"),
+        default_model=DEFAULT_OCR_MODEL,
+    )
+
+
+def _resolve_generate_image_config() -> ToolConfig:
+    return _resolve_tool_config(
+        tool_names=("generate_image",),
+        env_prefixes=("OPENAI_GENERATE_IMAGE",),
+        default_model=DEFAULT_IMAGE_MODEL,
+        legacy_model_envs=("OPENAI_IMAGE_MODEL",),
+    )
+
+
+def _resolve_edit_image_config() -> ToolConfig:
+    return _resolve_tool_config(
+        tool_names=("edit_image",),
+        env_prefixes=("OPENAI_EDIT_IMAGE",),
+        default_model=DEFAULT_IMAGE_MODEL,
+        legacy_model_envs=("OPENAI_IMAGE_MODEL",),
+    )
+
+
+def _resolve_ocr_api_mode(api_mode: str | None) -> str:
+    config = _load_config_file()
+    defaults = _mapping(config.get("defaults"))
+    tool_config = _tool_config_section(config, "ocr_image", "ocr")
+    return (
+        api_mode
+        or _env_value("OPENAI_OCR_API_MODE", "OPENAI_OCR_IMAGE_API_MODE")
+        or _config_value(tool_config, "api_mode", "apiMode")
+        or os.environ.get("OPENAI_API_MODE")
+        or _config_value(defaults, "api_mode", "apiMode")
+        or "chat"
+    )
 
 
 # ── helpers ────────────────────────────────────────────────────────────────
@@ -241,18 +401,18 @@ def _open_mask_for_edit(mask: str | None):
     yield buffer
 
 
-def _image_model_uses_implicit_high_fidelity() -> bool:
-    return IMAGE_MODEL == "gpt-image-2"
+def _image_model_uses_implicit_high_fidelity(image_model: str) -> bool:
+    return image_model == "gpt-image-2"
 
 
 # ── API callers ───────────────────────────────────────────────────────────
 
-def _stream_text(path: str, payload: dict, stream_type: str) -> str:
+def _stream_text(config: ToolConfig, path: str, payload: dict, stream_type: str) -> str:
     headers = {
-        "Authorization": f"Bearer {API_KEY}",
+        "Authorization": f"Bearer {config.api_key}",
         "Content-Type": "application/json",
     }
-    url = f"{BASE_URL.rstrip('/')}/{path.lstrip('/')}"
+    url = f"{config.base_url.rstrip('/')}/{path.lstrip('/')}"
     parts: list[str] = []
 
     with httpx.stream("POST", url, headers=headers, json=payload, timeout=90) as response:
@@ -284,11 +444,12 @@ def _stream_text(path: str, payload: dict, stream_type: str) -> str:
     return "".join(parts)
 
 
-def _call_chat(prompt: str, data_url: str, detail: str) -> str:
+def _call_chat(config: ToolConfig, prompt: str, data_url: str, detail: str) -> str:
     return _stream_text(
+        config,
         "chat/completions",
         {
-            "model": MODEL,
+            "model": config.model,
             "messages": [
                 {
                     "role": "user",
@@ -323,11 +484,12 @@ def _responses_payload(prompt: str, data_url: str, detail: str) -> list[dict]:
     ]
 
 
-def _call_responses(prompt: str, data_url: str, detail: str) -> str:
+def _call_responses(config: ToolConfig, prompt: str, data_url: str, detail: str) -> str:
     return _stream_text(
+        config,
         "responses",
         {
-            "model": MODEL,
+            "model": config.model,
             "input": _responses_payload(prompt, data_url, detail),
             "stream": True,
         },
@@ -335,12 +497,12 @@ def _call_responses(prompt: str, data_url: str, detail: str) -> str:
     )
 
 
-def _call_image_generation(payload: dict) -> dict:
+def _call_image_generation(config: ToolConfig, payload: dict) -> dict:
     headers = {
-        "Authorization": f"Bearer {API_KEY}",
+        "Authorization": f"Bearer {config.api_key}",
         "Content-Type": "application/json",
     }
-    url = f"{BASE_URL.rstrip('/')}/images/generations"
+    url = f"{config.base_url.rstrip('/')}/images/generations"
 
     with httpx.Client(timeout=180) as http_client:
         response = http_client.post(url, headers=headers, json=payload)
@@ -352,12 +514,12 @@ def _call_image_generation(payload: dict) -> dict:
     return response.json()
 
 
-def _call_image_edit(payload: dict) -> dict:
+def _call_image_edit(config: ToolConfig, payload: dict) -> dict:
     headers = {
-        "Authorization": f"Bearer {API_KEY}",
+        "Authorization": f"Bearer {config.api_key}",
         "Content-Type": "application/json",
     }
-    url = f"{BASE_URL.rstrip('/')}/images/edits"
+    url = f"{config.base_url.rstrip('/')}/images/edits"
 
     with httpx.Client(timeout=180) as http_client:
         response = http_client.post(url, headers=headers, json=payload)
@@ -389,7 +551,8 @@ def ocr_image(
         api_mode: API mode override ("chat" or "responses"). Falls back to
                   OPENAI_API_MODE env var, then "chat".
     """
-    mode = api_mode or API_MODE
+    config = _resolve_ocr_config()
+    mode = _resolve_ocr_api_mode(api_mode)
     caller = {
         "chat": _call_chat,
         "responses": _call_responses,
@@ -399,7 +562,7 @@ def ocr_image(
 
     media_type, b64_data = _load_image(source)
     data_url = f"data:{media_type};base64,{b64_data}"
-    return caller(prompt, data_url, detail)
+    return caller(config, prompt, data_url, detail)
 
 
 @mcp.tool(
@@ -431,8 +594,9 @@ def generate_image(
     if n < 1:
         raise ValueError("n must be at least 1.")
 
+    config = _resolve_generate_image_config()
     payload = {
-        "model": IMAGE_MODEL,
+        "model": config.model,
         "prompt": prompt,
         "size": size,
         "quality": quality,
@@ -444,7 +608,7 @@ def generate_image(
     if user:
         payload["user"] = user
 
-    result = _call_image_generation(payload)
+    result = _call_image_generation(config, payload)
     items = result.get("data") or []
     if not items:
         raise RuntimeError("Image generation response did not include any images.")
@@ -522,8 +686,9 @@ def edit_image(
     if output_compression is not None and not 0 <= output_compression <= 100:
         raise ValueError("output_compression must be between 0 and 100.")
 
+    config = _resolve_edit_image_config()
     request = {
-        "model": IMAGE_MODEL,
+        "model": config.model,
         "prompt": prompt,
         "size": size,
         "quality": quality,
@@ -532,7 +697,7 @@ def edit_image(
     }
     if background:
         request["background"] = background
-    if input_fidelity and not _image_model_uses_implicit_high_fidelity():
+    if input_fidelity and not _image_model_uses_implicit_high_fidelity(config.model):
         request["input_fidelity"] = input_fidelity
     if moderation:
         request["moderation"] = moderation
@@ -546,6 +711,7 @@ def edit_image(
         request["image"] = image_files if len(image_files) > 1 else image_files[0]
         if mask_file is not None:
             request["mask"] = mask_file
+        client = OpenAI(base_url=config.base_url, api_key=config.api_key)
         result = client.images.edit(**request)
 
     items = _result_get(result, "data") or []

@@ -24,10 +24,74 @@ Configure via environment variables or `.env` file:
 |---|---|---|
 | `OPENAI_API_KEY` | — | OpenAI API key (required) |
 | `OPENAI_BASE_URL` | `https://api.openai.com/v1` | API base URL (compatible with other OpenAI-like providers) |
-| `OPENAI_MODEL` | `gpt-4o` | Model name |
+| `OPENAI_MODEL` | `gpt-5.4` | Model name |
 | `OPENAI_API_MODE` | `chat` | API mode: `chat` (Chat Completions) or `responses` (Responses API) |
+| `OPENAI_OCR_MCP_CONFIG` | `./config.json` if present | Optional JSON config file path for structured defaults and per-tool overrides |
 | `OPENAI_IMAGE_MODEL` | `gpt-image-2` | Image generation/editing model name |
 | `OPENAI_IMAGE_OUTPUT_DIR` | `generated_images` | Default directory for generated or edited image files |
+
+Tool-specific environment variables are also supported:
+
+| Tool | API key | Base URL | Model | Extra |
+|---|---|---|---|---|
+| `ocr_image` | `OPENAI_OCR_API_KEY` | `OPENAI_OCR_BASE_URL` | `OPENAI_OCR_MODEL` | `OPENAI_OCR_API_MODE` |
+| `generate_image` | `OPENAI_GENERATE_IMAGE_API_KEY` | `OPENAI_GENERATE_IMAGE_BASE_URL` | `OPENAI_GENERATE_IMAGE_MODEL` | — |
+| `edit_image` | `OPENAI_EDIT_IMAGE_API_KEY` | `OPENAI_EDIT_IMAGE_BASE_URL` | `OPENAI_EDIT_IMAGE_MODEL` | — |
+
+`OPENAI_OCR_IMAGE_*` is also accepted as an alias for `OPENAI_OCR_*`.
+
+### Structured config file
+
+For larger setups, create `config.json` in the working directory, or set `OPENAI_OCR_MCP_CONFIG` to another JSON file. A complete example is included at `config.example.json`:
+
+```json
+{
+  "defaults": {
+    "base_url": "https://api.openai.com/v1",
+    "api_key": "sk-xxx"
+  },
+  "tools": {
+    "ocr_image": {
+      "base_url": "",
+      "api_key": "",
+      "model": "",
+      "api_mode": "chat"
+    },
+    "generate_image": {
+      "base_url": "",
+      "api_key": "",
+      "model": ""
+    },
+    "edit_image": {
+      "base_url": "",
+      "api_key": "",
+      "model": ""
+    }
+  }
+}
+```
+
+Each tool can define `base_url`, `api_key`, and `model`. `ocr_image` can also define `api_mode`. Empty string values are ignored, so the tool falls back to environment variables, `defaults`, or the tool's built-in model default.
+
+If you prefer to keep secrets outside JSON, use `api_key_env` instead of `api_key`:
+
+```json
+{
+  "defaults": {
+    "api_key_env": "OPENAI_API_KEY"
+  }
+}
+```
+
+Per-field resolution order:
+
+| Field | Priority |
+|---|---|
+| API key | Tool-specific env → tool config `api_key`/`api_key_env` → `OPENAI_API_KEY` → defaults config `api_key`/`api_key_env` |
+| Base URL | Tool-specific env → tool config → `OPENAI_BASE_URL` → defaults config → `https://api.openai.com/v1` |
+| OCR model | `OPENAI_OCR_MODEL` → tool config → `OPENAI_MODEL` → defaults config → `gpt-5.4` |
+| Image model | Tool-specific env → tool config → `OPENAI_IMAGE_MODEL` → `OPENAI_MODEL` → defaults config → `gpt-image-2` |
+| OCR API mode | tool parameter → tool-specific env → tool config → `OPENAI_API_MODE` → defaults config → `chat` |
 
 ### Priority (highest → lowest)
 
@@ -37,7 +101,7 @@ Configure via environment variables or `.env` file:
 | 2 | Shell environment variables | `export OPENAI_API_KEY=...` |
 | 3 | `.env` file | `OPENAI_API_KEY=...` in project root |
 
-In other words: if `OPENAI_API_KEY` is set in the MCP client config, it wins over everything. Otherwise the shell's env var wins, and finally `.env` is used as fallback.
+In other words: if an environment variable is set in the MCP client config, it wins over the shell and `.env` for that same variable. Structured config then applies according to the per-field rules above.
 
 ## Tools
 
@@ -73,7 +137,7 @@ Generate image files from a text prompt using the OpenAI image generation API.
 | `background` | `string` or `null` | `null` | Optional background mode if supported by the image model |
 | `user` | `string` or `null` | `null` | Optional end-user identifier for API abuse monitoring |
 
-The image model is configured only through `OPENAI_IMAGE_MODEL`; it is not exposed as a tool parameter. The tool returns JSON with the saved local file paths and any API-provided revised prompts or usage data.
+The image model is configured through `OPENAI_GENERATE_IMAGE_MODEL`, the structured config file, or the legacy shared `OPENAI_IMAGE_MODEL`; it is not exposed as a tool parameter. The tool returns JSON with the saved local file paths and any API-provided revised prompts or usage data.
 
 ### `edit_image`
 
@@ -97,7 +161,7 @@ Edit existing image files from a text prompt using the OpenAI image editing API.
 | `output_compression` | `integer` or `null` | `null` | Optional 0-100 compression level for `jpeg` or `webp` output |
 | `user` | `string` or `null` | `null` | Optional end-user identifier for API abuse monitoring |
 
-The image model is configured only through `OPENAI_IMAGE_MODEL`. For JSON edit requests this tool sends input images as `images` references; local files are converted to data URLs, while HTTP(S) URLs are passed through directly. The tool returns JSON with the saved local file paths and any API-provided revised prompts or usage data.
+The image model is configured through `OPENAI_EDIT_IMAGE_MODEL`, the structured config file, or the legacy shared `OPENAI_IMAGE_MODEL`. The tool returns JSON with the saved local file paths and any API-provided revised prompts or usage data.
 
 ## Using with MCP Clients
 
@@ -112,8 +176,9 @@ The image model is configured only through `OPENAI_IMAGE_MODEL`. For JSON edit r
       "env": {
         "OPENAI_API_KEY": "sk-xxx",
         "OPENAI_BASE_URL": "https://api.openai.com/v1",
-        "OPENAI_MODEL": "gpt-4o",
-        "OPENAI_IMAGE_MODEL": "gpt-image-2"
+        "OPENAI_MODEL": "gpt-5.4",
+        "OPENAI_IMAGE_MODEL": "gpt-image-2",
+        "OPENAI_OCR_MCP_CONFIG": "/path/to/openai-ocr-mcp/config.json"
       }
     }
   }
