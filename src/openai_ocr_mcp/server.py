@@ -326,14 +326,12 @@ def _extension_for_media_type(media_type: str) -> str:
     }.get(media_type, "png")
 
 
-def _load_image(source: str, timeout: float = DEFAULT_REQUEST_TIMEOUT, work_dir: str | None = None) -> tuple[str, str]:
+def _load_image(source: str, timeout: float = DEFAULT_REQUEST_TIMEOUT) -> tuple[str, str]:
     """Load image from a file path or URL.
 
     Args:
         source: Local file path or HTTP(S) URL.
         timeout: Request timeout for URL downloads.
-        work_dir: Working directory for resolving relative local paths.
-                  If None, relative paths are resolved against the process cwd.
 
     Returns a tuple of (media_type, base64_data).
     """
@@ -344,8 +342,6 @@ def _load_image(source: str, timeout: float = DEFAULT_REQUEST_TIMEOUT, work_dir:
         raw = resp.content
     else:
         path = Path(source)
-        if not path.is_absolute() and work_dir:
-            path = Path(work_dir) / path
         if not path.exists():
             raise FileNotFoundError(f"Image file not found: {source}")
         media_type = _image_media_type(path)
@@ -460,7 +456,6 @@ def _decode_image_item(item: dict) -> bytes:
 def _open_images_for_edit(
     sources: list[str],
     timeout: float = DEFAULT_REQUEST_TIMEOUT,
-    work_dir: str | None = None,
 ):
     """Open local paths as files and remote/data sources as in-memory files."""
     with ExitStack() as stack:
@@ -468,8 +463,6 @@ def _open_images_for_edit(
         for index, source in enumerate(sources, start=1):
             if _is_local_image_source(source):
                 path = Path(source)
-                if not path.is_absolute() and work_dir:
-                    path = Path(work_dir) / path
                 if not path.exists():
                     raise FileNotFoundError(f"Image file not found: {source}")
                 files.append(stack.enter_context(path.open("rb")))
@@ -484,15 +477,13 @@ def _open_images_for_edit(
 
 
 @contextmanager
-def _open_mask_for_edit(mask: str | None, timeout: float = DEFAULT_REQUEST_TIMEOUT, work_dir: str | None = None):
+def _open_mask_for_edit(mask: str | None, timeout: float = DEFAULT_REQUEST_TIMEOUT):
     if not mask:
         yield None
         return
 
     if _is_local_image_source(mask):
         path = Path(mask)
-        if not path.is_absolute() and work_dir:
-            path = Path(work_dir) / path
         if not path.exists():
             raise FileNotFoundError(f"Mask file not found: {mask}")
         with path.open("rb") as handle:
@@ -644,11 +635,10 @@ def _call_image_edit(config: ToolConfig, payload: dict) -> dict:
 # ── MCP tool ─────────────────────────────────────────────────────────────
 
 @mcp.tool(
-    description="Analyse an image using the OpenAI vision API and return the text or description it contains. Local file paths support relative paths (resolved relative to work_dir); HTTP(S) URLs are unaffected."
+    description="Analyse an image using the OpenAI vision API and return the text or description it contains. Local images must use absolute paths — .reasonix/ prefixed paths are relative and will fail. HTTP(S) URLs are unaffected."
 )
 def ocr_image(
-    source: Annotated[str, Field(description='Local image path (resolved relative to work_dir) or HTTP(S) URL')],
-    work_dir: Annotated[str, Field(description='Working directory for resolving relative local image paths.')],
+    source: Annotated[str, Field(description='Absolute path to a local image file, or HTTP(S) URL. NOTE: .reasonix/ prefixed paths are relative and will fail — convert to an absolute path first.')],
     prompt: Annotated[str, Field(description='Custom instruction for the vision model.')] = "Please read and describe all the text and visual content in this image in detail.",
     detail: Annotated[str, Field(description='Image detail level: "auto", "low", or "high".')] = "auto",
     api_mode: Annotated[str | None, Field(description='API mode override: "chat" or "responses". Falls back to OPENAI_API_MODE env var, then "chat".')] = None,
@@ -663,7 +653,7 @@ def ocr_image(
     if caller is None:
         raise ValueError(f"Unsupported API mode: {mode}")
 
-    media_type, b64_data = _load_image(source, timeout=config.request_timeout, work_dir=work_dir)
+    media_type, b64_data = _load_image(source, timeout=config.request_timeout)
     data_url = f"data:{media_type};base64,{b64_data}"
     return caller(config, prompt, data_url, detail)
 
@@ -735,9 +725,8 @@ def generate_image(
     description="Edit existing image files using the OpenAI image editing API."
 )
 def edit_image(
-    source: Annotated[str | list[str], Field(description='Local file path, HTTP(S) URL, data URL, or list of image sources to edit.')],
+    source: Annotated[str | list[str], Field(description='Absolute path to a local image file, HTTP(S) URL, data URL, or list of image sources. NOTE: .reasonix/ prefixed paths are relative and will fail — convert to absolute paths first.')],
     prompt: Annotated[str, Field(description='Text prompt describing the desired edit.')],
-    work_dir: Annotated[str, Field(description='Working directory for resolving relative local paths for source and mask.')],
     mask: Annotated[str | None, Field(description='Optional local path, HTTP(S) URL, or data URL for an edit mask.')] = None,
     output_path: Annotated[str | None, Field(description='Optional output file path or directory. If omitted, images are saved under OPENAI_IMAGE_OUTPUT_DIR.')] = None,
     size: Annotated[str, Field(description='Output image size, e.g. "auto", "1024x1024", "1024x1536", or "1536x1024".')] = "auto",
@@ -780,11 +769,9 @@ def edit_image(
     with _open_images_for_edit(
         sources,
         timeout=config.request_timeout,
-        work_dir=work_dir,
     ) as image_files, _open_mask_for_edit(
         mask,
         timeout=config.request_timeout,
-        work_dir=work_dir,
     ) as mask_file:
         request["image"] = image_files if len(image_files) > 1 else image_files[0]
         if mask_file is not None:
