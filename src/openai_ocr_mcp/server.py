@@ -647,11 +647,11 @@ def _call_image_edit(config: ToolConfig, payload: dict) -> dict:
     description="Analyse an image using the OpenAI vision API and return the text or description it contains. Local file paths support relative paths (resolved relative to work_dir); HTTP(S) URLs are unaffected."
 )
 def ocr_image(
-    source: Annotated[str, Field(description='Local image path (supports relative paths, resolved relative to work_dir) or HTTP(S) URL')],
+    source: Annotated[str, Field(description='Local image path (resolved relative to work_dir) or HTTP(S) URL')],
+    work_dir: Annotated[str, Field(description='Working directory for resolving relative local image paths.')],
     prompt: Annotated[str, Field(description='Custom instruction for the vision model.')] = "Please read and describe all the text and visual content in this image in detail.",
     detail: Annotated[str, Field(description='Image detail level: "auto", "low", or "high".')] = "auto",
     api_mode: Annotated[str | None, Field(description='API mode override: "chat" or "responses". Falls back to OPENAI_API_MODE env var, then "chat".')] = None,
-    work_dir: Annotated[str | None, Field(description='Working directory for resolving relative local image paths. If omitted, uses the MCP server current working directory.')] = None,
 ) -> str:
     """Analyse an image using the OpenAI vision API."""
     config = _resolve_ocr_config()
@@ -737,6 +737,7 @@ def generate_image(
 def edit_image(
     source: Annotated[str | list[str], Field(description='Local file path, HTTP(S) URL, data URL, or list of image sources to edit.')],
     prompt: Annotated[str, Field(description='Text prompt describing the desired edit.')],
+    work_dir: Annotated[str, Field(description='Working directory for resolving relative local paths for source and mask.')],
     mask: Annotated[str | None, Field(description='Optional local path, HTTP(S) URL, or data URL for an edit mask.')] = None,
     output_path: Annotated[str | None, Field(description='Optional output file path or directory. If omitted, images are saved under OPENAI_IMAGE_OUTPUT_DIR.')] = None,
     size: Annotated[str, Field(description='Output image size, e.g. "auto", "1024x1024", "1024x1536", or "1536x1024".')] = "auto",
@@ -748,7 +749,6 @@ def edit_image(
     moderation: Annotated[str | None, Field(description='Optional moderation level for GPT image models: "auto" or "low".')] = None,
     output_compression: Annotated[int | None, Field(description='Optional 0-100 compression level for JPEG/WebP.')] = None,
     user: Annotated[str | None, Field(description='Optional end-user identifier for API abuse monitoring.')] = None,
-    work_dir: Annotated[str | None, Field(description='Working directory for resolving relative local paths for source and mask. If omitted, uses the MCP server current working directory.')] = None,
 ) -> str:
     """Edit one or more input images from a prompt and save the results locally."""
     if n < 1:
