@@ -32,12 +32,14 @@ from io import BytesIO
 import json
 import os
 from pathlib import Path
+from typing import Annotated
 from uuid import uuid4
 
 import httpx
 from dotenv import load_dotenv
 from mcp.server.fastmcp import FastMCP
 from openai import OpenAI
+from pydantic import Field
 
 load_dotenv()
 
@@ -324,8 +326,14 @@ def _extension_for_media_type(media_type: str) -> str:
     }.get(media_type, "png")
 
 
-def _load_image(source: str, timeout: float = DEFAULT_REQUEST_TIMEOUT) -> tuple[str, str]:
+def _load_image(source: str, timeout: float = DEFAULT_REQUEST_TIMEOUT, work_dir: str | None = None) -> tuple[str, str]:
     """Load image from a file path or URL.
+
+    Args:
+        source: Local file path or HTTP(S) URL.
+        timeout: Request timeout for URL downloads.
+        work_dir: Working directory for resolving relative local paths.
+                  If None, relative paths are resolved against the process cwd.
 
     Returns a tuple of (media_type, base64_data).
     """
@@ -336,6 +344,8 @@ def _load_image(source: str, timeout: float = DEFAULT_REQUEST_TIMEOUT) -> tuple[
         raw = resp.content
     else:
         path = Path(source)
+        if not path.is_absolute() and work_dir:
+            path = Path(work_dir) / path
         if not path.exists():
             raise FileNotFoundError(f"Image file not found: {source}")
         media_type = _image_media_type(path)
@@ -450,6 +460,7 @@ def _decode_image_item(item: dict) -> bytes:
 def _open_images_for_edit(
     sources: list[str],
     timeout: float = DEFAULT_REQUEST_TIMEOUT,
+    work_dir: str | None = None,
 ):
     """Open local paths as files and remote/data sources as in-memory files."""
     with ExitStack() as stack:
@@ -457,6 +468,8 @@ def _open_images_for_edit(
         for index, source in enumerate(sources, start=1):
             if _is_local_image_source(source):
                 path = Path(source)
+                if not path.is_absolute() and work_dir:
+                    path = Path(work_dir) / path
                 if not path.exists():
                     raise FileNotFoundError(f"Image file not found: {source}")
                 files.append(stack.enter_context(path.open("rb")))
@@ -471,13 +484,15 @@ def _open_images_for_edit(
 
 
 @contextmanager
-def _open_mask_for_edit(mask: str | None, timeout: float = DEFAULT_REQUEST_TIMEOUT):
+def _open_mask_for_edit(mask: str | None, timeout: float = DEFAULT_REQUEST_TIMEOUT, work_dir: str | None = None):
     if not mask:
         yield None
         return
 
     if _is_local_image_source(mask):
         path = Path(mask)
+        if not path.is_absolute() and work_dir:
+            path = Path(work_dir) / path
         if not path.exists():
             raise FileNotFoundError(f"Mask file not found: {mask}")
         with path.open("rb") as handle:
@@ -629,23 +644,16 @@ def _call_image_edit(config: ToolConfig, payload: dict) -> dict:
 # ── MCP tool ─────────────────────────────────────────────────────────────
 
 @mcp.tool(
-    description="Analyse an image using the OpenAI vision API and return the text or description it contains. 注意：本地图片请使用绝对路径，HTTP(S) URL 不受影响。"
+    description="Analyse an image using the OpenAI vision API and return the text or description it contains. Local file paths support relative paths (resolved relative to work_dir); HTTP(S) URLs are unaffected."
 )
 def ocr_image(
-    source: str,
-    prompt: str = "Please read and describe all the text and visual content in this image in detail.",
-    detail: str = "auto",
-    api_mode: str | None = None,
+    source: Annotated[str, Field(description='Local image path (supports relative paths, resolved relative to work_dir) or HTTP(S) URL')],
+    prompt: Annotated[str, Field(description='Custom instruction for the vision model.')] = "Please read and describe all the text and visual content in this image in detail.",
+    detail: Annotated[str, Field(description='Image detail level: "auto", "low", or "high".')] = "auto",
+    api_mode: Annotated[str | None, Field(description='API mode override: "chat" or "responses". Falls back to OPENAI_API_MODE env var, then "chat".')] = None,
+    work_dir: Annotated[str | None, Field(description='Working directory for resolving relative local image paths. If omitted, uses the MCP server current working directory.')] = None,
 ) -> str:
-    """Analyse an image using the OpenAI vision API.
-
-    Args:
-        source: 本地图片的绝对路径，或 HTTP(S) URL。相对路径不可用（MCP 服务器工作目录不等于项目目录）。
-        prompt: Custom instruction for the vision model.
-        detail: Image detail level ("auto", "low", or "high").
-        api_mode: API mode override ("chat" or "responses"). Falls back to
-                  OPENAI_API_MODE env var, then "chat".
-    """
+    """Analyse an image using the OpenAI vision API."""
     config = _resolve_ocr_config()
     mode = _resolve_ocr_api_mode(api_mode)
     caller = {
@@ -655,7 +663,7 @@ def ocr_image(
     if caller is None:
         raise ValueError(f"Unsupported API mode: {mode}")
 
-    media_type, b64_data = _load_image(source, timeout=config.request_timeout)
+    media_type, b64_data = _load_image(source, timeout=config.request_timeout, work_dir=work_dir)
     data_url = f"data:{media_type};base64,{b64_data}"
     return caller(config, prompt, data_url, detail)
 
@@ -664,28 +672,16 @@ def ocr_image(
     description="Generate image files from a text prompt using the OpenAI image generation API."
 )
 def generate_image(
-    prompt: str,
-    output_path: str | None = None,
-    size: str = "1024x1024",
-    quality: str = "auto",
-    output_format: str = "png",
-    n: int = 1,
-    background: str | None = None,
-    user: str | None = None,
+    prompt: Annotated[str, Field(description='Text prompt describing the image to generate.')],
+    output_path: Annotated[str | None, Field(description='Optional output file path or directory. If omitted, images are saved under OPENAI_IMAGE_OUTPUT_DIR.')] = None,
+    size: Annotated[str, Field(description='Image size, e.g. "1024x1024", "1024x1536", or "1536x1024".')] = "1024x1024",
+    quality: Annotated[str, Field(description='Image quality: "auto", "low", "medium", or "high".')] = "auto",
+    output_format: Annotated[str, Field(description='Output format: "png", "jpeg", or "webp".')] = "png",
+    n: Annotated[int, Field(description='Number of images to generate (minimum 1).')] = 1,
+    background: Annotated[str | None, Field(description='Optional background mode if supported by the image model.')] = None,
+    user: Annotated[str | None, Field(description='Optional end-user identifier for API abuse monitoring.')] = None,
 ) -> str:
-    """Generate images from a text prompt and save them locally.
-
-    Args:
-        prompt: Text prompt describing the image to generate.
-        output_path: Optional output file path or directory. If omitted, images
-                     are saved under OPENAI_IMAGE_OUTPUT_DIR.
-        size: Image size, such as "1024x1024", "1024x1536", or "1536x1024".
-        quality: Image quality, typically "auto", "low", "medium", or "high".
-        output_format: Output format, typically "png", "jpeg", or "webp".
-        n: Number of images to generate.
-        background: Optional background mode if supported by the image model.
-        user: Optional end-user identifier for API abuse monitoring.
-    """
+    """Generate images from a text prompt and save them locally."""
     if n < 1:
         raise ValueError("n must be at least 1.")
 
@@ -739,43 +735,22 @@ def generate_image(
     description="Edit existing image files using the OpenAI image editing API."
 )
 def edit_image(
-    source: str | list[str],
-    prompt: str,
-    mask: str | None = None,
-    output_path: str | None = None,
-    size: str = "auto",
-    quality: str = "auto",
-    output_format: str = "png",
-    n: int = 1,
-    background: str | None = None,
-    input_fidelity: str | None = None,
-    moderation: str | None = None,
-    output_compression: int | None = None,
-    user: str | None = None,
+    source: Annotated[str | list[str], Field(description='Local file path, HTTP(S) URL, data URL, or list of image sources to edit.')],
+    prompt: Annotated[str, Field(description='Text prompt describing the desired edit.')],
+    mask: Annotated[str | None, Field(description='Optional local path, HTTP(S) URL, or data URL for an edit mask.')] = None,
+    output_path: Annotated[str | None, Field(description='Optional output file path or directory. If omitted, images are saved under OPENAI_IMAGE_OUTPUT_DIR.')] = None,
+    size: Annotated[str, Field(description='Output image size, e.g. "auto", "1024x1024", "1024x1536", or "1536x1024".')] = "auto",
+    quality: Annotated[str, Field(description='Output quality: "auto", "low", "medium", or "high".')] = "auto",
+    output_format: Annotated[str, Field(description='Output format: "png", "jpeg", or "webp".')] = "png",
+    n: Annotated[int, Field(description='Number of edited images to generate (minimum 1).')] = 1,
+    background: Annotated[str | None, Field(description='Optional background mode: "auto", "transparent", or "opaque".')] = None,
+    input_fidelity: Annotated[str | None, Field(description='Optional fidelity level for the input image(s): "high" or "low".')] = None,
+    moderation: Annotated[str | None, Field(description='Optional moderation level for GPT image models: "auto" or "low".')] = None,
+    output_compression: Annotated[int | None, Field(description='Optional 0-100 compression level for JPEG/WebP.')] = None,
+    user: Annotated[str | None, Field(description='Optional end-user identifier for API abuse monitoring.')] = None,
+    work_dir: Annotated[str | None, Field(description='Working directory for resolving relative local paths for source and mask. If omitted, uses the MCP server current working directory.')] = None,
 ) -> str:
-    """Edit one or more input images from a prompt and save the results locally.
-
-    Args:
-        source: Local file path, HTTP(S) URL, data URL, or list of image
-                sources to edit.
-        prompt: Text prompt describing the desired edit.
-        mask: Optional local path, HTTP(S) URL, or data URL for an edit mask.
-        output_path: Optional output file path or directory. If omitted, images
-                     are saved under OPENAI_IMAGE_OUTPUT_DIR.
-        size: Output image size, such as "auto", "1024x1024",
-              "1024x1536", or "1536x1024".
-        quality: Output quality, typically "auto", "low", "medium", or "high".
-        output_format: Output format, typically "png", "jpeg", or "webp".
-        n: Number of edited images to generate.
-        background: Optional background mode, such as "auto", "transparent",
-                    or "opaque".
-        input_fidelity: Optional fidelity level for the input image(s),
-                        "high" or "low".
-        moderation: Optional moderation level for GPT image models,
-                    "auto" or "low".
-        output_compression: Optional 0-100 compression level for jpeg/webp.
-        user: Optional end-user identifier for API abuse monitoring.
-    """
+    """Edit one or more input images from a prompt and save the results locally."""
     if n < 1:
         raise ValueError("n must be at least 1.")
     if output_compression is not None and not 0 <= output_compression <= 100:
@@ -805,9 +780,11 @@ def edit_image(
     with _open_images_for_edit(
         sources,
         timeout=config.request_timeout,
+        work_dir=work_dir,
     ) as image_files, _open_mask_for_edit(
         mask,
         timeout=config.request_timeout,
+        work_dir=work_dir,
     ) as mask_file:
         request["image"] = image_files if len(image_files) > 1 else image_files[0]
         if mask_file is not None:
