@@ -629,7 +629,7 @@ def _call_image_edit(config: ToolConfig, payload: dict) -> dict:
 # ── MCP tool ─────────────────────────────────────────────────────────────
 
 @mcp.tool(
-    description="Analyse an image using the OpenAI vision API and return the text or description it contains."
+    description="Analyse an image using the OpenAI vision API and return the text or description it contains. NOTE: source requires an absolute local path or HTTP(S) URL — relative paths are not supported (MCP server working directory differs from project directory)."
 )
 def ocr_image(
     source: str,
@@ -640,7 +640,7 @@ def ocr_image(
     """Analyse an image using the OpenAI vision API.
 
     Args:
-        source: Local file path or HTTP(S) URL of the image.
+        source: Absolute local file path or HTTP(S) URL of the image. Relative paths are NOT supported — MCP server working directory differs from project directory.
         prompt: Custom instruction for the vision model.
         detail: Image detail level ("auto", "low", or "high").
         api_mode: API mode override ("chat" or "responses"). Falls back to
